@@ -16,6 +16,7 @@ type Question = {
   section: Section;
   difficulty: Difficulty;
   question: string;
+  image_url?: string | null;
   options: string[];
   answer: number;
   nepali?: string;
@@ -97,6 +98,13 @@ function makeMock(bank: Question[], usedIds: string[]) {
 }
 
 export default function MockTestPage() {
+     useEffect(() => {
+    const loggedInStudent = localStorage.getItem("loggedInStudent");
+
+    if (!loggedInStudent) {
+      window.location.href = "/login";
+    }
+  }, []); 
   const [student, setStudent] = useState<any>(null);
   const [mock, setMock] = useState<Question[]>([]);
   const [sectionIndex, setSectionIndex] = useState(0);
@@ -154,14 +162,16 @@ export default function MockTestPage() {
         /*
          * Check latest student status
          */
-        const { data: currentStudentData, error: studentError } =
-          await supabase
-            .from("students")
-            .select(
-              "id, full_name, student_id, blocked"
-            )
-            .eq("id", currentStudent.id)
-            .maybeSingle();
+        const {
+          data: currentStudentData,
+          error: studentError,
+        } = await supabase
+          .from("students")
+          .select(
+            "id, full_name, student_id, blocked"
+          )
+          .eq("id", currentStudent.id)
+          .maybeSingle();
 
         if (
           studentError ||
@@ -206,14 +216,16 @@ export default function MockTestPage() {
         /*
          * Get questions already used by this student
          */
-        const { data: historyData, error: historyError } =
-          await supabase
-            .from("question_history")
-            .select("question_id")
-            .eq(
-              "student_id",
-              currentStudentData.id
-            );
+        const {
+          data: historyData,
+          error: historyError,
+        } = await supabase
+          .from("question_history")
+          .select("question_id")
+          .eq(
+            "student_id",
+            currentStudentData.id
+          );
 
         if (historyError) {
           throw new Error(historyError.message);
@@ -226,24 +238,31 @@ export default function MockTestPage() {
 
         /*
          * Get all questions from Supabase
+         *
+         * image_url is included so student side
+         * can display uploaded question images.
          */
-        const { data: databaseQuestions, error } =
-          await supabase
-            .from("questions")
-            .select(
-              `
-                id,
-                section,
-                question,
-                option_a,
-                option_b,
-                option_c,
-                option_d,
-                correct_answer,
-                difficulty,
-                audio_url
-              `
-            );
+        const {
+          data: databaseQuestions,
+          error,
+        } = await supabase
+          .from("questions")
+          .select(
+            `
+              id,
+              section,
+              question,
+              option_a,
+              option_b,
+              option_c,
+              option_d,
+              correct_answer,
+              difficulty,
+              audio_url,
+              nepali,
+              image_url
+            `
+          );
 
         if (error) {
           throw new Error(error.message);
@@ -283,11 +302,15 @@ export default function MockTestPage() {
               difficulty:
                 question.difficulty as Difficulty,
               question: question.question,
+              image_url:
+                question.image_url || null,
               options,
               answer:
                 answerIndex >= 0
                   ? answerIndex
                   : 0,
+              nepali:
+                question.nepali || undefined,
               audioText:
                 question.audio_url || undefined,
             };
@@ -332,7 +355,6 @@ export default function MockTestPage() {
       setTimeLeft((oldTime) => {
         if (oldTime <= 1) {
           clearInterval(timer);
-
           finishTest();
 
           return 0;
@@ -365,7 +387,10 @@ export default function MockTestPage() {
     return `${String(minutes).padStart(
       2,
       "0"
-    )}:${String(remaining).padStart(2, "0")}`;
+    )}:${String(remaining).padStart(
+      2,
+      "0"
+    )}`;
   }
 
   function chooseAnswer(index: number) {
@@ -508,18 +533,19 @@ export default function MockTestPage() {
       /*
        * Save result
        */
-      const { error: resultError } =
-        await supabase
-          .from("results")
-          .insert({
-            student_id: student.id,
-            score,
-            section_scores: {},
-            answers,
-            total_questions:
-              mock.length,
-            passed: score >= 200,
-          });
+      const {
+        error: resultError,
+      } = await supabase
+        .from("results")
+        .insert({
+          student_id: student.id,
+          score,
+          section_scores: {},
+          answers,
+          total_questions:
+            mock.length,
+          passed: score >= 200,
+        });
 
       if (resultError) {
         throw new Error(
@@ -538,17 +564,18 @@ export default function MockTestPage() {
       );
 
       if (historyRows.length > 0) {
-        const { error: historyError } =
-          await supabase
-            .from("question_history")
-            .upsert(
-              historyRows,
-              {
-                onConflict:
-                  "student_id,question_id",
-                ignoreDuplicates: true,
-              }
-            );
+        const {
+          error: historyError,
+        } = await supabase
+          .from("question_history")
+          .upsert(
+            historyRows,
+            {
+              onConflict:
+                "student_id,question_id",
+              ignoreDuplicates: true,
+            }
+          );
 
         if (historyError) {
           throw new Error(
@@ -801,9 +828,27 @@ export default function MockTestPage() {
                 Choose one answer.
               </p>
 
-              <h2 className="text-xl md:text-2xl font-semibold mt-5 leading-relaxed">
-                {currentQuestion.question}
-              </h2>
+              {/* Question Image */}
+              {currentQuestion.image_url && (
+                <div className="mt-6 flex justify-center">
+                  <div className="w-full max-w-3xl border rounded-lg bg-gray-50 p-3">
+                    <img
+                      src={
+                        currentQuestion.image_url
+                      }
+                      alt="Question"
+                      className="w-full max-h-[500px] object-contain rounded"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Question Text */}
+              {currentQuestion.question && (
+                <h2 className="text-xl md:text-2xl font-semibold mt-5 leading-relaxed">
+                  {currentQuestion.question}
+                </h2>
+              )}
 
               {currentSection ===
                 "Listening Comprehension" && (

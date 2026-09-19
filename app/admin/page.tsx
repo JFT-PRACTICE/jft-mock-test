@@ -35,6 +35,7 @@ type Question = {
   difficulty: string;
   nepali?: string | null;
   audio_url?: string | null;
+  image_url?: string | null;
   created_at: string;
 };
 
@@ -70,6 +71,9 @@ export default function AdminPage() {
   const [questionLoading, setQuestionLoading] =
     useState(false);
 
+  const [uploadingImage, setUploadingImage] =
+    useState(false);
+
   const [form, setForm] = useState({
     section: "Script & Vocabulary",
     category: "",
@@ -82,6 +86,7 @@ export default function AdminPage() {
     difficulty: "medium",
     nepali: "",
     audio_url: "",
+    image_url: "",
   });
 
   useEffect(() => {
@@ -186,18 +191,101 @@ export default function AdminPage() {
       difficulty: "medium",
       nepali: "",
       audio_url: "",
+      image_url: "",
     });
+  }
+
+  async function uploadQuestionImage(
+    file: File
+  ) {
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      alert("Please select an image file.");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert("Image must be smaller than 5 MB.");
+      return;
+    }
+
+    try {
+      setUploadingImage(true);
+
+      const fileExt =
+        file.name.split(".").pop()?.toLowerCase() ||
+        "jpg";
+
+      const fileName = `${crypto.randomUUID()}.${fileExt}`;
+
+      const filePath = `questions/${fileName}`;
+
+      const { error: uploadError } =
+        await supabase.storage
+          .from("question-images")
+          .upload(filePath, file, {
+            upsert: false,
+          });
+
+      if (uploadError) {
+        throw uploadError;
+      }
+
+      const { data: publicUrlData } =
+        supabase.storage
+          .from("question-images")
+          .getPublicUrl(filePath);
+
+      const imageUrl =
+        publicUrlData.publicUrl;
+
+      setForm((prev) => ({
+        ...prev,
+        image_url: imageUrl,
+      }));
+
+      alert("Question image uploaded successfully!");
+    } catch (error) {
+      console.error(error);
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Failed to upload question image."
+      );
+    } finally {
+      setUploadingImage(false);
+    }
+  }
+
+  function removeQuestionImage() {
+    setForm((prev) => ({
+      ...prev,
+      image_url: "",
+    }));
   }
 
   async function saveQuestion() {
     if (
-      !form.question.trim() ||
+      !form.question.trim() &&
+      !form.image_url
+    ) {
+      alert(
+        "Please enter question text or upload a question image."
+      );
+      return;
+    }
+
+    if (
       !form.option_a.trim() ||
       !form.option_b.trim() ||
       !form.option_c.trim() ||
       !form.option_d.trim()
     ) {
-      alert("Please fill all required question fields.");
+      alert(
+        "Please fill Option A, B, C and D."
+      );
       return;
     }
 
@@ -216,6 +304,7 @@ export default function AdminPage() {
         difficulty: form.difficulty,
         nepali: form.nepali,
         audio_url: form.audio_url,
+        image_url: form.image_url || null,
       };
 
       if (editingId) {
@@ -239,6 +328,7 @@ export default function AdminPage() {
 
       resetQuestionForm();
       setQuestionPage(1);
+
       await loadData(true);
     } catch (error) {
       console.error(error);
@@ -258,20 +348,33 @@ export default function AdminPage() {
 
     setForm({
       section:
-        question.section || "Script & Vocabulary",
-      category: question.category || "",
-      question: question.question || "",
-      option_a: question.option_a || "",
-      option_b: question.option_b || "",
-      option_c: question.option_c || "",
-      option_d: question.option_d || "",
+        question.section ||
+        "Script & Vocabulary",
+      category:
+        question.category || "",
+      question:
+        question.question || "",
+      option_a:
+        question.option_a || "",
+      option_b:
+        question.option_b || "",
+      option_c:
+        question.option_c || "",
+      option_d:
+        question.option_d || "",
       correct_answer:
         question.correct_answer || "A",
       difficulty:
         question.difficulty || "medium",
-      nepali: question.nepali || "",
-      audio_url: question.audio_url || "",
+      nepali:
+        question.nepali || "",
+      audio_url:
+        question.audio_url || "",
+      image_url:
+        question.image_url || "",
     });
+
+    setActiveTab("questions");
 
     window.scrollTo({
       top: 0,
@@ -386,7 +489,9 @@ export default function AdminPage() {
   }
 
   async function deleteResult(id: string) {
-    const ok = confirm("Delete this result?");
+    const ok = confirm(
+      "Delete this result?"
+    );
 
     if (!ok) return;
 
@@ -891,6 +996,7 @@ export default function AdminPage() {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* SECTION */}
                     <select
                       value={
                         form.section
@@ -921,6 +1027,7 @@ export default function AdminPage() {
                       </option>
                     </select>
 
+                    {/* CATEGORY */}
                     <input
                       value={
                         form.category
@@ -936,6 +1043,7 @@ export default function AdminPage() {
                       className="border rounded-lg px-3 py-2"
                     />
 
+                    {/* QUESTION TEXT */}
                     <textarea
                       value={
                         form.question
@@ -947,10 +1055,79 @@ export default function AdminPage() {
                             e.target.value,
                         })
                       }
-                      placeholder="Question"
+                      placeholder="Question text (optional if using image)"
                       className="border rounded-lg px-3 py-2 md:col-span-2 min-h-24"
                     />
 
+                    {/* QUESTION IMAGE */}
+                    <div className="md:col-span-2 border rounded-xl p-4 bg-gray-50">
+                      <label className="block font-semibold text-gray-800 mb-2">
+                        Question Image
+                      </label>
+
+                      <p className="text-xs text-gray-500 mb-3">
+                        Upload an image for the question.
+                        Options remain text only.
+                      </p>
+
+                      <input
+                        type="file"
+                        accept="image/*"
+                        disabled={
+                          uploadingImage
+                        }
+                        onChange={(e) => {
+                          const file =
+                            e.target.files?.[0];
+
+                          if (file) {
+                            uploadQuestionImage(
+                              file
+                            );
+                          }
+
+                          e.currentTarget.value =
+                            "";
+                        }}
+                        className="block w-full text-sm"
+                      />
+
+                      {uploadingImage && (
+                        <div className="mt-3 text-blue-600 font-semibold">
+                          Uploading image...
+                        </div>
+                      )}
+
+                      {form.image_url && (
+                        <div className="mt-4">
+                          <div className="text-sm font-semibold mb-2">
+                            Image Preview
+                          </div>
+
+                          <div className="relative inline-block">
+                            <img
+                              src={
+                                form.image_url
+                              }
+                              alt="Question preview"
+                              className="max-w-full md:max-w-xl max-h-80 rounded-xl border object-contain bg-white"
+                            />
+
+                            <button
+                              type="button"
+                              onClick={
+                                removeQuestionImage
+                              }
+                              className="absolute top-2 right-2 bg-red-600 text-white px-3 py-1 rounded-lg text-sm"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* OPTIONS */}
                     <input
                       value={
                         form.option_a
@@ -1011,6 +1188,7 @@ export default function AdminPage() {
                       className="border rounded-lg px-3 py-2"
                     />
 
+                    {/* CORRECT ANSWER */}
                     <select
                       value={
                         form.correct_answer
@@ -1041,6 +1219,7 @@ export default function AdminPage() {
                       </option>
                     </select>
 
+                    {/* DIFFICULTY */}
                     <select
                       value={
                         form.difficulty
@@ -1067,6 +1246,7 @@ export default function AdminPage() {
                       </option>
                     </select>
 
+                    {/* NEPALI */}
                     <textarea
                       value={
                         form.nepali
@@ -1082,6 +1262,7 @@ export default function AdminPage() {
                       className="border rounded-lg px-3 py-2 md:col-span-2 min-h-20"
                     />
 
+                    {/* AUDIO */}
                     <input
                       value={
                         form.audio_url
@@ -1103,7 +1284,8 @@ export default function AdminPage() {
                       saveQuestion
                     }
                     disabled={
-                      questionLoading
+                      questionLoading ||
+                      uploadingImage
                     }
                     className="mt-5 bg-blue-600 text-white px-5 py-3 rounded-lg disabled:opacity-50"
                   >
@@ -1115,6 +1297,7 @@ export default function AdminPage() {
                   </button>
                 </div>
 
+                {/* QUESTION BANK */}
                 <div className="bg-white rounded-2xl shadow-sm border p-5">
                   <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-5">
                     <div>
@@ -1190,11 +1373,26 @@ export default function AdminPage() {
                                 </span>
                               </div>
 
-                              <div className="font-semibold text-lg">
-                                {
-                                  question.question
-                                }
-                              </div>
+                              {/* QUESTION IMAGE IN LIST */}
+                              {question.image_url && (
+                                <div className="mb-4">
+                                  <img
+                                    src={
+                                      question.image_url
+                                    }
+                                    alt="Question"
+                                    className="max-w-full md:max-w-xl max-h-80 rounded-xl border object-contain bg-white"
+                                  />
+                                </div>
+                              )}
+
+                              {question.question && (
+                                <div className="font-semibold text-lg">
+                                  {
+                                    question.question
+                                  }
+                                </div>
+                              )}
 
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 text-sm">
                                 <div>
@@ -1243,6 +1441,12 @@ export default function AdminPage() {
                                   {
                                     question.nepali
                                   }
+                                </div>
+                              )}
+
+                              {question.audio_url && (
+                                <div className="mt-2 text-sm text-blue-600">
+                                  Audio URL added
                                 </div>
                               )}
                             </div>
