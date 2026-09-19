@@ -51,12 +51,14 @@ export default function DashboardPage() {
       // CHECK LATEST STUDENT STATUS
       // ============================================
 
-      const { data: currentDbStudent, error: studentError } =
-        await supabase
-          .from("students")
-          .select("id, full_name, student_id, blocked")
-          .eq("id", currentStudent.id)
-          .maybeSingle();
+      const {
+        data: currentDbStudent,
+        error: studentError,
+      } = await supabase
+        .from("students")
+        .select("id, full_name, student_id, blocked")
+        .eq("id", currentStudent.id)
+        .maybeSingle();
 
       if (studentError || !currentDbStudent) {
         sessionStorage.removeItem("loggedInStudent");
@@ -130,9 +132,9 @@ export default function DashboardPage() {
       if (!settingsError && settings) {
         setMockSettings(settings);
 
-        // ============================================
+        // ==========================================
         // LOAD ENABLED PACKAGES ONLY
-        // ============================================
+        // ==========================================
 
         if (settings.paid_system_enabled) {
           const {
@@ -192,14 +194,17 @@ export default function DashboardPage() {
 
           {/* ========================================
               NORMAL MOCK TEST
+              ONLY WHEN PAID SYSTEM IS OFF
           ======================================== */}
 
-          <a
-            href="/mock-test"
-            className="inline-block bg-black text-white px-6 py-3 rounded-lg mt-8"
-          >
-            Start Mock Test
-          </a>
+          {!loadingMockSystem && !paidSystemEnabled && (
+            <a
+              href="/mock-test"
+              className="inline-block bg-black text-white px-6 py-3 rounded-lg mt-8"
+            >
+              Start Mock Test
+            </a>
+          )}
 
           {/* ========================================
               LIVE PAID MOCK SYSTEM
@@ -284,7 +289,8 @@ export default function DashboardPage() {
                           <p>
                             Price:{" "}
                             <span className="font-bold">
-                              Rs. {Number(pkg.price).toLocaleString()}
+                              Rs.{" "}
+                              {Number(pkg.price).toLocaleString()}
                             </span>
                           </p>
 
@@ -353,18 +359,6 @@ export default function DashboardPage() {
 
             </div>
           )}
-
-          {/* ========================================
-              MOCK SYSTEM OFF MESSAGE
-              Only useful while testing
-          ======================================== */}
-
-          {!loadingMockSystem &&
-            !paidSystemEnabled && (
-              <div className="mt-8 text-sm text-gray-400">
-                Paid mock system is currently unavailable.
-              </div>
-            )}
 
           {/* ========================================
               RESULT HISTORY
