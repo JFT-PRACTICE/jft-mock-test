@@ -41,7 +41,6 @@ export default function LoginPage() {
         return;
       }
 
-      // Login भएको student को आवश्यक information मात्र save गर्ने
       const loggedInStudent = {
         id: student.id,
         full_name: student.full_name,
@@ -49,10 +48,14 @@ export default function LoginPage() {
         blocked: student.blocked,
       };
 
-      localStorage.setItem(
+      // Session only — browser/tab session सकिएपछि login हट्छ
+      sessionStorage.setItem(
         "loggedInStudent",
         JSON.stringify(loggedInStudent)
       );
+
+      // पुरानो localStorage login हटाउने
+      localStorage.removeItem("loggedInStudent");
 
       window.location.href = "/dashboard";
     } catch (error) {

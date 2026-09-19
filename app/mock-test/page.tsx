@@ -98,13 +98,6 @@ function makeMock(bank: Question[], usedIds: string[]) {
 }
 
 export default function MockTestPage() {
-     useEffect(() => {
-    const loggedInStudent = localStorage.getItem("loggedInStudent");
-
-    if (!loggedInStudent) {
-      window.location.href = "/login";
-    }
-  }, []); 
   const [student, setStudent] = useState<any>(null);
   const [mock, setMock] = useState<Question[]>([]);
   const [sectionIndex, setSectionIndex] = useState(0);
@@ -144,7 +137,7 @@ export default function MockTestPage() {
   useEffect(() => {
     async function loadMockTest() {
       try {
-        const saved = localStorage.getItem(
+        const saved = sessionStorage.getItem(
           "loggedInStudent"
         );
 
@@ -177,7 +170,7 @@ export default function MockTestPage() {
           studentError ||
           !currentStudentData
         ) {
-          localStorage.removeItem(
+          sessionStorage.removeItem(
             "loggedInStudent"
           );
 
@@ -186,7 +179,7 @@ export default function MockTestPage() {
         }
 
         if (currentStudentData.blocked) {
-          localStorage.removeItem(
+          sessionStorage.removeItem(
             "loggedInStudent"
           );
 
@@ -208,7 +201,7 @@ export default function MockTestPage() {
 
         setStudent(updatedStudent);
 
-        localStorage.setItem(
+        sessionStorage.setItem(
           "loggedInStudent",
           JSON.stringify(updatedStudent)
         );
@@ -238,9 +231,6 @@ export default function MockTestPage() {
 
         /*
          * Get all questions from Supabase
-         *
-         * image_url is included so student side
-         * can display uploaded question images.
          */
         const {
           data: databaseQuestions,
@@ -279,7 +269,6 @@ export default function MockTestPage() {
 
         /*
          * Convert database questions
-         * into the format used by the test
          */
         const convertedQuestions: Question[] =
           databaseQuestions.map((question) => {
@@ -828,7 +817,6 @@ export default function MockTestPage() {
                 Choose one answer.
               </p>
 
-              {/* Question Image */}
               {currentQuestion.image_url && (
                 <div className="mt-6 flex justify-center">
                   <div className="w-full max-w-3xl border rounded-lg bg-gray-50 p-3">
@@ -843,7 +831,6 @@ export default function MockTestPage() {
                 </div>
               )}
 
-              {/* Question Text */}
               {currentQuestion.question && (
                 <h2 className="text-xl md:text-2xl font-semibold mt-5 leading-relaxed">
                   {currentQuestion.question}

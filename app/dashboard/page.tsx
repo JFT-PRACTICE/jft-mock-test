@@ -9,7 +9,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     async function loadDashboard() {
-      const savedStudent = localStorage.getItem("loggedInStudent");
+      const savedStudent = sessionStorage.getItem("loggedInStudent");
 
       if (!savedStudent) {
         window.location.href = "/login";
@@ -31,14 +31,14 @@ export default function DashboardPage() {
           .maybeSingle();
 
       if (studentError || !currentDbStudent) {
-        localStorage.removeItem("loggedInStudent");
+        sessionStorage.removeItem("loggedInStudent");
         window.location.href = "/login";
         return;
       }
 
       // Admin ले block गरेको छ भने तुरुन्त access रोक्ने
       if (currentDbStudent.blocked) {
-        localStorage.removeItem("loggedInStudent");
+        sessionStorage.removeItem("loggedInStudent");
         alert("Your account has been blocked. Please contact admin.");
         window.location.href = "/login";
         return;
@@ -53,7 +53,7 @@ export default function DashboardPage() {
 
       setStudent(updatedStudent);
 
-      localStorage.setItem(
+      sessionStorage.setItem(
         "loggedInStudent",
         JSON.stringify(updatedStudent)
       );
@@ -152,7 +152,9 @@ export default function DashboardPage() {
                         <p>
                           Status:{" "}
                           <span className="font-bold">
-                            {result.passed ? "Passed" : "Not Passed"}
+                            {result.passed
+                              ? "Passed"
+                              : "Not Passed"}
                           </span>
                         </p>
                       </div>
@@ -165,7 +167,7 @@ export default function DashboardPage() {
 
           <button
             onClick={() => {
-              localStorage.removeItem("loggedInStudent");
+              sessionStorage.removeItem("loggedInStudent");
               window.location.href = "/login";
             }}
             className="block mt-8 text-red-600"
