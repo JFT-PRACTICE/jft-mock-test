@@ -23,6 +23,8 @@ type Question = {
   audioText?: string;
 };
 
+type MockMode = "normal" | "free-demo" | "paid";
+
 const sections: Section[] = [
   "Script and Vocabulary",
   "Conversation and Expression",
@@ -54,14 +56,32 @@ function getMarks(difficulty: Difficulty) {
   return 6;
 }
 
-function makeMock(bank: Question[], usedIds: string[]) {
+/*
+ * Normal / Paid mock generator
+ */
+function makeMock(
+  bank: Question[],
+  usedIds: string[],
+  minimumRequired = 45
+) {
   const available = bank.filter(
     (question) => !usedIds.includes(question.id)
   );
 
-  const source = available.length >= 45 ? available : bank;
+  /*
+   * Do NOT silently reuse old questions when there
+   * are not enough unused questions.
+   *
+   * This prevents a false "new" mock test.
+   */
+  if (available.length < minimumRequired) {
+    return [];
+  }
 
-  const count = Math.min(randomCount(), source.length);
+  const count = Math.min(
+    randomCount(),
+    available.length
+  );
 
   const selected: Question[] = [];
 
@@ -69,7 +89,7 @@ function makeMock(bank: Question[], usedIds: string[]) {
 
   sections.forEach((section) => {
     const sectionQuestions = shuffle(
-      source.filter(
+      available.filter(
         (question) => question.section === section
       )
     );
@@ -81,7 +101,7 @@ function makeMock(bank: Question[], usedIds: string[]) {
 
   while (selected.length < count) {
     const remaining = shuffle(
-      source.filter(
+      available.filter(
         (question) =>
           !selected.some(
             (item) => item.id === question.id
@@ -97,10 +117,71 @@ function makeMock(bank: Question[], usedIds: string[]) {
   return shuffle(selected).slice(0, count);
 }
 
+/*
+ * Free Demo:
+ * Fixed 20 questions.
+ *
+ * IMPORTANT:
+ * No student history is used.
+ * Therefore every student receives the same
+ * 20-question demo pool.
+ *
+ * We use deterministic sorting by question ID
+ * before selecting the first 20, so it does not
+ * change every refresh.
+ */
+function makeFreeDemo(bank: Question[]) {
+  const sorted = [...bank].sort((a, b) =>
+    a.id.localeCompare(b.id)
+  );
+
+  const selected: Question[] = [];
+
+  /*
+   * Try to keep all four sections represented.
+   */
+  const perSection = 5;
+
+  sections.forEach((section) => {
+    const sectionQuestions = sorted.filter(
+      (question) => question.section === section
+    );
+
+    selected.push(
+      ...sectionQuestions.slice(0, perSection)
+    );
+  });
+
+  /*
+   * If one section has fewer than 5 questions,
+   * fill remaining positions from the rest.
+   */
+  if (selected.length < 20) {
+    const remaining = sorted.filter(
+      (question) =>
+        !selected.some(
+          (item) => item.id === question.id
+        )
+    );
+
+    selected.push(
+      ...remaining.slice(
+        0,
+        20 - selected.length
+      )
+    );
+  }
+
+  return selected.slice(0, 20);
+}
+
 export default function MockTestPage() {
   const [student, setStudent] = useState<any>(null);
+
   const [mock, setMock] = useState<Question[]>([]);
+
   const [sectionIndex, setSectionIndex] = useState(0);
+
   const [currentIndex, setCurrentIndex] = useState(0);
 
   const [answers, setAnswers] = useState<
@@ -121,9 +202,11 @@ export default function MockTestPage() {
   const [languageOpen, setLanguageOpen] =
     useState(false);
 
-  const [finished, setFinished] = useState(false);
+  const [finished, setFinished] =
+    useState(false);
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] =
+    useState(true);
 
   const [savingResult, setSavingResult] =
     useState(false);
@@ -131,30 +214,50 @@ export default function MockTestPage() {
   const [finalScore, setFinalScore] =
     useState<number | null>(null);
 
+  const [mockMode, setMockMode] =
+    useState<MockMode>("normal");
+
+  const [accessMessage, setAccessMessage] =
+    useState("");
+
+  const [purchaseId, setPurchaseId] =
+    useState<string | null>(null);
+
+  const [adminAccessId, setAdminAccessId] =
+    useState<string | null>(null);
+
   /*
-   * Load logged-in student and questions
+   * ============================================
+   * LOAD MOCK TEST
+   * ============================================
    */
+
   useEffect(() => {
     async function loadMockTest() {
       try {
-        const saved = sessionStorage.getItem(
-          "loggedInStudent"
-        );
+        const saved =
+          sessionStorage.getItem(
+            "loggedInStudent"
+          );
 
         if (!saved) {
           window.location.href = "/login";
           return;
         }
 
-        const currentStudent = JSON.parse(saved);
+        const currentStudent =
+          JSON.parse(saved);
 
         setStudent(currentStudent);
 
         const supabase = createClient();
 
         /*
-         * Check latest student status
+         * ========================================
+         * CHECK STUDENT
+         * ========================================
          */
+
         const {
           data: currentStudentData,
           error: studentError,
@@ -163,7 +266,10 @@ export default function MockTestPage() {
           .select(
             "id, full_name, student_id, blocked"
           )
-          .eq("id", currentStudent.id)
+          .eq(
+            "id",
+            currentStudent.id
+          )
           .maybeSingle();
 
         if (
@@ -193,10 +299,12 @@ export default function MockTestPage() {
 
         const updatedStudent = {
           id: currentStudentData.id,
-          full_name: currentStudentData.full_name,
+          full_name:
+            currentStudentData.full_name,
           student_id:
             currentStudentData.student_id,
-          blocked: currentStudentData.blocked,
+          blocked:
+            currentStudentData.blocked,
         };
 
         setStudent(updatedStudent);
@@ -207,34 +315,52 @@ export default function MockTestPage() {
         );
 
         /*
-         * Get questions already used by this student
+         * ========================================
+         * READ URL MODE
+         * ========================================
          */
-        const {
-          data: historyData,
-          error: historyError,
-        } = await supabase
-          .from("question_history")
-          .select("question_id")
-          .eq(
-            "student_id",
-            currentStudentData.id
+
+        const params =
+          new URLSearchParams(
+            window.location.search
           );
 
-        if (historyError) {
-          throw new Error(historyError.message);
-        }
-
-        const usedIds =
-          historyData?.map(
-            (item) => item.question_id
-          ) || [];
+        const requestedMode =
+          params.get("mode");
 
         /*
-         * Get all questions from Supabase
+         * ========================================
+         * GET LIVE MOCK SETTINGS
+         * ========================================
          */
+
+        const {
+          data: settings,
+          error: settingsError,
+        } = await supabase
+          .from("mock_test_settings")
+          .select(
+            "id, paid_system_enabled, free_demo_enabled, free_demo_questions"
+          )
+          .eq("id", 1)
+          .maybeSingle();
+
+        if (settingsError) {
+          throw new Error(
+            "Mock Settings: " +
+              settingsError.message
+          );
+        }
+
+        /*
+         * ========================================
+         * GET ALL QUESTIONS
+         * ========================================
+         */
+
         const {
           data: databaseQuestions,
-          error,
+          error: questionError,
         } = await supabase
           .from("questions")
           .select(
@@ -254,8 +380,10 @@ export default function MockTestPage() {
             `
           );
 
-        if (error) {
-          throw new Error(error.message);
+        if (questionError) {
+          throw new Error(
+            questionError.message
+          );
         }
 
         if (
@@ -268,52 +396,411 @@ export default function MockTestPage() {
         }
 
         /*
-         * Convert database questions
+         * ========================================
+         * CONVERT DATABASE QUESTIONS
+         * ========================================
          */
-        const convertedQuestions: Question[] =
-          databaseQuestions.map((question) => {
-            const options = [
-              question.option_a,
-              question.option_b,
-              question.option_c,
-              question.option_d,
-            ];
 
-            const answerIndex =
-              options.indexOf(
-                question.correct_answer
-              );
+        const convertedQuestions:
+          Question[] =
+          databaseQuestions
+            .map((question) => {
+              const options = [
+                question.option_a,
+                question.option_b,
+                question.option_c,
+                question.option_d,
+              ];
 
-            return {
-              id: question.id,
-              section:
-                question.section as Section,
-              difficulty:
-                question.difficulty as Difficulty,
-              question: question.question,
-              image_url:
-                question.image_url || null,
-              options,
-              answer:
-                answerIndex >= 0
-                  ? answerIndex
-                  : 0,
-              nepali:
-                question.nepali || undefined,
-              audioText:
-                question.audio_url || undefined,
-            };
-          });
+              const answerIndex =
+                options.indexOf(
+                  question.correct_answer
+                );
+
+              return {
+                id: question.id,
+
+                section:
+                  question.section as Section,
+
+                difficulty:
+                  question.difficulty as Difficulty,
+
+                question:
+                  question.question,
+
+                image_url:
+                  question.image_url || null,
+
+                options,
+
+                answer:
+                  answerIndex >= 0
+                    ? answerIndex
+                    : 0,
+
+                nepali:
+                  question.nepali ||
+                  undefined,
+
+                audioText:
+                  question.audio_url ||
+                  undefined,
+              };
+            })
+            .filter((question) =>
+              sections.includes(
+                question.section
+              )
+            );
 
         /*
-         * Create randomized mock
+         * ========================================
+         * PAID SYSTEM OFF
+         * ========================================
+         *
+         * Old system continues.
          */
-        const selected = makeMock(
-          convertedQuestions,
-          usedIds
-        );
 
-        setMock(selected);
+        if (
+          !settings?.paid_system_enabled
+        ) {
+          setMockMode("normal");
+
+          /*
+           * Get question history
+           */
+          const {
+            data: historyData,
+            error: historyError,
+          } = await supabase
+            .from("question_history")
+            .select("question_id")
+            .eq(
+              "student_id",
+              currentStudentData.id
+            );
+
+          if (historyError) {
+            throw new Error(
+              historyError.message
+            );
+          }
+
+          const usedIds =
+            historyData?.map(
+              (item) =>
+                item.question_id
+            ) || [];
+
+          const selected =
+            makeMock(
+              convertedQuestions,
+              usedIds
+            );
+
+          if (!selected.length) {
+            throw new Error(
+              "There are not enough unused questions for a new mock test."
+            );
+          }
+
+          setMock(selected);
+
+          return;
+        }
+
+        /*
+         * ========================================
+         * PAID SYSTEM ON
+         * ========================================
+         *
+         * IMPORTANT:
+         * Old /mock-test route is now locked.
+         */
+
+        /*
+         * ========================================
+         * FREE DEMO REQUEST
+         * ========================================
+         */
+
+        if (
+          requestedMode ===
+          "free-demo"
+        ) {
+          if (
+            !settings.free_demo_enabled
+          ) {
+            setAccessMessage(
+              "Free Demo is currently disabled by admin."
+            );
+
+            return;
+          }
+
+          /*
+           * Free Demo must be fixed 20.
+           */
+          const demo =
+            makeFreeDemo(
+              convertedQuestions
+            );
+
+          if (demo.length < 20) {
+            setAccessMessage(
+              "Free Demo needs at least 20 questions in the question bank."
+            );
+
+            return;
+          }
+
+          setMockMode("free-demo");
+
+          setMock(demo);
+
+          return;
+        }
+
+        /*
+         * ========================================
+         * PAID MOCK ACCESS
+         * ========================================
+         */
+
+        /*
+         * First check admin-granted access.
+         */
+
+        const now =
+          new Date().toISOString();
+
+        const {
+          data: adminAccess,
+          error: adminAccessError,
+        } = await supabase
+          .from("mock_admin_access")
+          .select(
+            "id, mock_count, validity_days, expires_at, enabled"
+          )
+          .eq(
+            "student_id",
+            currentStudentData.id
+          )
+          .eq(
+            "enabled",
+            true
+          )
+          .or(
+            `expires_at.is.null,expires_at.gte.${now}`
+          )
+          .order(
+            "created_at",
+            {
+              ascending: false,
+            }
+          )
+          .limit(1)
+          .maybeSingle();
+
+        if (
+          adminAccessError &&
+          !adminAccessError.message
+            .toLowerCase()
+            .includes("no rows")
+        ) {
+          /*
+           * Continue to purchase check.
+           */
+        }
+
+        if (adminAccess) {
+          setAdminAccessId(
+            adminAccess.id
+          );
+
+          /*
+           * If mock_count is null, access is unlimited
+           * until expiration.
+           *
+           * If mock_count exists, it is checked again
+           * when consuming the mock.
+           */
+          if (
+            adminAccess.mock_count ===
+              null ||
+            adminAccess.mock_count >
+              0
+          ) {
+            const {
+              data: historyData,
+              error: historyError,
+            } = await supabase
+              .from("question_history")
+              .select(
+                "question_id"
+              )
+              .eq(
+                "student_id",
+                currentStudentData.id
+              );
+
+            if (historyError) {
+              throw new Error(
+                historyError.message
+              );
+            }
+
+            const usedIds =
+              historyData?.map(
+                (item) =>
+                  item.question_id
+              ) || [];
+
+            const selected =
+              makeMock(
+                convertedQuestions,
+                usedIds
+              );
+
+            if (!selected.length) {
+              throw new Error(
+                "There are not enough unused questions for another paid mock test."
+              );
+            }
+
+            setMockMode("paid");
+
+            setMock(selected);
+
+            return;
+          }
+        }
+
+        /*
+         * ========================================
+         * CHECK PURCHASED PACKAGES
+         * ========================================
+         */
+
+        const {
+          data: purchase,
+          error: purchaseError,
+        } = await supabase
+          .from("mock_purchases")
+          .select(
+            "id, purchased_mock_count, validity_days, purchased_at, expires_at, mocks_used, payment_status"
+          )
+          .eq(
+            "student_id",
+            currentStudentData.id
+          )
+          .eq(
+            "payment_status",
+            "paid"
+          )
+          .gt(
+            "purchased_mock_count",
+            0
+          )
+          .order(
+            "purchased_at",
+            {
+              ascending: false,
+            }
+          )
+          .limit(1)
+          .maybeSingle();
+
+        if (
+          purchaseError &&
+          !purchaseError.message
+            .toLowerCase()
+            .includes("no rows")
+        ) {
+          /*
+           * We continue to access message.
+           */
+        }
+
+        if (purchase) {
+          const expired =
+            purchase.expires_at &&
+            new Date(
+              purchase.expires_at
+            ).getTime() <
+              Date.now();
+
+          const exhausted =
+            purchase.mocks_used >=
+            purchase.purchased_mock_count;
+
+          if (
+            !expired &&
+            !exhausted
+          ) {
+            setPurchaseId(
+              purchase.id
+            );
+
+            /*
+             * Get student question history.
+             */
+
+            const {
+              data: historyData,
+              error: historyError,
+            } = await supabase
+              .from("question_history")
+              .select(
+                "question_id"
+              )
+              .eq(
+                "student_id",
+                currentStudentData.id
+              );
+
+            if (historyError) {
+              throw new Error(
+                historyError.message
+              );
+            }
+
+            const usedIds =
+              historyData?.map(
+                (item) =>
+                  item.question_id
+              ) || [];
+
+            const selected =
+              makeMock(
+                convertedQuestions,
+                usedIds
+              );
+
+            if (!selected.length) {
+              throw new Error(
+                "There are not enough unused questions for another paid mock test."
+              );
+            }
+
+            setMockMode("paid");
+
+            setMock(selected);
+
+            return;
+          }
+        }
+
+        /*
+         * ========================================
+         * NO PAID ACCESS
+         * ========================================
+         */
+
+        setAccessMessage(
+          "You do not have an active paid mock package. Please choose a package from your dashboard."
+        );
       } catch (error) {
         alert(
           error instanceof Error
@@ -329,8 +816,11 @@ export default function MockTestPage() {
   }, []);
 
   /*
-   * Timer
+   * ============================================
+   * TIMER
+   * ============================================
    */
+
   useEffect(() => {
     if (
       finished ||
@@ -340,65 +830,103 @@ export default function MockTestPage() {
       return;
     }
 
-    const timer = setInterval(() => {
-      setTimeLeft((oldTime) => {
-        if (oldTime <= 1) {
-          clearInterval(timer);
-          finishTest();
+    const timer =
+      setInterval(() => {
+        setTimeLeft(
+          (oldTime) => {
+            if (oldTime <= 1) {
+              clearInterval(timer);
 
-          return 0;
-        }
+              finishTest();
 
-        return oldTime - 1;
-      });
-    }, 1000);
+              return 0;
+            }
 
-    return () => clearInterval(timer);
-  }, [finished, mock.length, loading]);
+            return oldTime - 1;
+          }
+        );
+      }, 1000);
+
+    return () =>
+      clearInterval(timer);
+  }, [
+    finished,
+    mock.length,
+    loading,
+  ]);
 
   const currentSection =
     sections[sectionIndex];
 
-  const sectionQuestions = useMemo(() => {
-    return mock.filter(
-      (question) =>
-        question.section === currentSection
-    );
-  }, [mock, currentSection]);
+  const sectionQuestions =
+    useMemo(() => {
+      return mock.filter(
+        (question) =>
+          question.section ===
+          currentSection
+      );
+    }, [
+      mock,
+      currentSection,
+    ]);
 
   const currentQuestion =
-    sectionQuestions[currentIndex];
+    sectionQuestions[
+      currentIndex
+    ];
 
-  function formatTime(seconds: number) {
-    const minutes = Math.floor(seconds / 60);
-    const remaining = seconds % 60;
+  function formatTime(
+    seconds: number
+  ) {
+    const minutes =
+      Math.floor(seconds / 60);
 
-    return `${String(minutes).padStart(
+    const remaining =
+      seconds % 60;
+
+    return `${String(
+      minutes
+    ).padStart(
       2,
       "0"
-    )}:${String(remaining).padStart(
+    )}:${String(
+      remaining
+    ).padStart(
       2,
       "0"
     )}`;
   }
 
-  function chooseAnswer(index: number) {
-    if (!currentQuestion) return;
+  function chooseAnswer(
+    index: number
+  ) {
+    if (!currentQuestion) {
+      return;
+    }
 
-    setAnswers((old) => ({
-      ...old,
-      [currentQuestion.id]: index,
-    }));
+    setAnswers(
+      (old) => ({
+        ...old,
+        [currentQuestion.id]:
+          index,
+      })
+    );
   }
 
   function toggleFlag() {
-    if (!currentQuestion) return;
+    if (!currentQuestion) {
+      return;
+    }
 
-    setFlags((old) => ({
-      ...old,
-      [currentQuestion.id]:
-        !old[currentQuestion.id],
-    }));
+    setFlags(
+      (old) => ({
+        ...old,
+        [currentQuestion.id]:
+          !old[
+            currentQuestion.id
+          ],
+      })
+    );
   }
 
   function nextQuestion() {
@@ -406,7 +934,9 @@ export default function MockTestPage() {
       currentIndex <
       sectionQuestions.length - 1
     ) {
-      setCurrentIndex(currentIndex + 1);
+      setCurrentIndex(
+        currentIndex + 1
+      );
     }
   }
 
@@ -416,7 +946,9 @@ export default function MockTestPage() {
       currentSection !==
         "Listening Comprehension"
     ) {
-      setCurrentIndex(currentIndex - 1);
+      setCurrentIndex(
+        currentIndex - 1
+      );
     }
   }
 
@@ -440,12 +972,16 @@ export default function MockTestPage() {
   }
 
   function playAudio() {
-    if (!currentQuestion?.audioText) {
+    if (
+      !currentQuestion?.audioText
+    ) {
       return;
     }
 
     const used =
-      audioPlays[currentQuestion.id] || 0;
+      audioPlays[
+        currentQuestion.id
+      ] || 0;
 
     if (used >= 2) {
       return;
@@ -460,32 +996,42 @@ export default function MockTestPage() {
 
     window.speechSynthesis.cancel();
 
-    window.speechSynthesis.speak(speech);
+    window.speechSynthesis.speak(
+      speech
+    );
 
-    setAudioPlays((old) => ({
-      ...old,
-      [currentQuestion.id]: used + 1,
-    }));
+    setAudioPlays(
+      (old) => ({
+        ...old,
+        [currentQuestion.id]:
+          used + 1,
+      })
+    );
   }
 
   function calculateScore() {
     let raw = 0;
+
     let maxRaw = 0;
 
-    mock.forEach((question) => {
-      const marks = getMarks(
-        question.difficulty
-      );
+    mock.forEach(
+      (question) => {
+        const marks =
+          getMarks(
+            question.difficulty
+          );
 
-      maxRaw += marks;
+        maxRaw += marks;
 
-      if (
-        answers[question.id] ===
-        question.answer
-      ) {
-        raw += marks;
+        if (
+          answers[
+            question.id
+          ] === question.answer
+        ) {
+          raw += marks;
+        }
       }
-    });
+    );
 
     if (!maxRaw) {
       return 0;
@@ -496,11 +1042,18 @@ export default function MockTestPage() {
       Math.max(
         0,
         Math.round(
-          (raw / maxRaw) * 250
+          (raw / maxRaw) *
+            250
         )
       )
     );
   }
+
+  /*
+   * ============================================
+   * FINISH TEST
+   * ============================================
+   */
 
   async function finishTest() {
     if (
@@ -513,27 +1066,39 @@ export default function MockTestPage() {
     setSavingResult(true);
 
     try {
-      const score = calculateScore();
+      const score =
+        calculateScore();
 
       setFinalScore(score);
 
-      const supabase = createClient();
+      const supabase =
+        createClient();
 
       /*
-       * Save result
+       * ========================================
+       * SAVE RESULT
+       * ========================================
        */
+
       const {
         error: resultError,
       } = await supabase
         .from("results")
         .insert({
-          student_id: student.id,
+          student_id:
+            student.id,
+
           score,
+
           section_scores: {},
+
           answers,
+
           total_questions:
             mock.length,
-          passed: score >= 200,
+
+          passed:
+            score >= 200,
         });
 
       if (resultError) {
@@ -543,33 +1108,191 @@ export default function MockTestPage() {
       }
 
       /*
-       * Save question history
+       * ========================================
+       * FREE DEMO
+       * ========================================
+       *
+       * Do NOT save demo questions into
+       * question_history.
+       *
+       * This allows the same demo to be
+       * attempted repeatedly.
        */
-      const historyRows = mock.map(
-        (question) => ({
-          student_id: student.id,
-          question_id: question.id,
-        })
-      );
 
-      if (historyRows.length > 0) {
-        const {
-          error: historyError,
-        } = await supabase
-          .from("question_history")
-          .upsert(
-            historyRows,
-            {
-              onConflict:
-                "student_id,question_id",
-              ignoreDuplicates: true,
-            }
+      if (
+        mockMode !==
+        "free-demo"
+      ) {
+        /*
+         * ======================================
+         * SAVE QUESTION HISTORY
+         * ======================================
+         */
+
+        const historyRows =
+          mock.map(
+            (question) => ({
+              student_id:
+                student.id,
+
+              question_id:
+                question.id,
+            })
           );
 
-        if (historyError) {
-          throw new Error(
-            historyError.message
-          );
+        if (
+          historyRows.length >
+          0
+        ) {
+          const {
+            error:
+              historyError,
+          } =
+            await supabase
+              .from(
+                "question_history"
+              )
+              .upsert(
+                historyRows,
+                {
+                  onConflict:
+                    "student_id,question_id",
+
+                  ignoreDuplicates:
+                    true,
+                }
+              );
+
+          if (historyError) {
+            throw new Error(
+              historyError.message
+            );
+          }
+        }
+      }
+
+      /*
+       * ========================================
+       * CONSUME PAID MOCK
+       * ========================================
+       */
+
+      if (
+        mockMode === "paid"
+      ) {
+        /*
+         * Purchased package
+         */
+        if (purchaseId) {
+          const {
+            data: purchase,
+            error:
+              purchaseReadError,
+          } =
+            await supabase
+              .from(
+                "mock_purchases"
+              )
+              .select(
+                "mocks_used, purchased_mock_count"
+              )
+              .eq(
+                "id",
+                purchaseId
+              )
+              .maybeSingle();
+
+          if (
+            purchaseReadError
+          ) {
+            throw new Error(
+              purchaseReadError.message
+            );
+          }
+
+          if (purchase) {
+            const nextUsed =
+              Number(
+                purchase.mocks_used
+              ) + 1;
+
+            await supabase
+              .from(
+                "mock_purchases"
+              )
+              .update({
+                mocks_used:
+                  nextUsed,
+              })
+              .eq(
+                "id",
+                purchaseId
+              );
+          }
+        }
+
+        /*
+         * Admin granted access
+         */
+        if (
+          adminAccessId
+        ) {
+          const {
+            data: access,
+            error:
+              accessReadError,
+          } =
+            await supabase
+              .from(
+                "mock_admin_access"
+              )
+              .select(
+                "mock_count"
+              )
+              .eq(
+                "id",
+                adminAccessId
+              )
+              .maybeSingle();
+
+          if (
+            accessReadError
+          ) {
+            throw new Error(
+              accessReadError.message
+            );
+          }
+
+          if (
+            access &&
+            access.mock_count !==
+              null
+          ) {
+            const nextCount =
+              Math.max(
+                0,
+                Number(
+                  access.mock_count
+                ) - 1
+              );
+
+            await supabase
+              .from(
+                "mock_admin_access"
+              )
+              .update({
+                mock_count:
+                  nextCount,
+
+                enabled:
+                  nextCount >
+                  0,
+              })
+              .eq(
+                "id",
+                adminAccessId
+              );
+          }
         }
       }
 
@@ -585,13 +1308,80 @@ export default function MockTestPage() {
     }
   }
 
+  /*
+   * ============================================
+   * LOADING
+   * ============================================
+   */
+
   if (loading) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-gray-100">
-        <p>Loading Mock Test...</p>
+        <p>
+          Loading Mock Test...
+        </p>
       </main>
     );
   }
+
+  /*
+   * ============================================
+   * ACCESS DENIED
+   * ============================================
+   */
+
+  if (
+    accessMessage &&
+    !mock.length
+  ) {
+    return (
+      <main className="min-h-screen bg-[#eef1f4] flex items-center justify-center p-5">
+        <div className="max-w-xl w-full bg-white border rounded-lg shadow-sm overflow-hidden">
+
+          <div className="bg-[#1f4e79] text-white text-center py-3 font-semibold">
+            Made by Anish Bhattarai
+          </div>
+
+          <div className="p-8 text-center">
+
+            <div className="text-5xl mb-5">
+              🔒
+            </div>
+
+            <h1 className="text-2xl font-bold">
+              Mock Test Access
+            </h1>
+
+            <p className="text-gray-600 mt-4">
+              {accessMessage}
+            </p>
+
+            <button
+              onClick={() => {
+                window.location.href =
+                  "/dashboard";
+              }}
+              className="mt-7 bg-[#1f4e79] text-white px-7 py-3 rounded font-bold"
+            >
+              Back to Dashboard
+            </button>
+
+          </div>
+
+          <div className="bg-[#1f4e79] text-white text-center py-3 font-semibold">
+            Made by Anish Bhattarai
+          </div>
+
+        </div>
+      </main>
+    );
+  }
+
+  /*
+   * ============================================
+   * INVALID MOCK
+   * ============================================
+   */
 
   if (
     !student ||
@@ -606,25 +1396,52 @@ export default function MockTestPage() {
     );
   }
 
+  /*
+   * ============================================
+   * RESULT
+   * ============================================
+   */
+
   if (finished) {
     const score =
-      finalScore ?? calculateScore();
+      finalScore ??
+      calculateScore();
 
     return (
       <main className="min-h-screen bg-[#eef1f4]">
+
         <div className="bg-[#1f4e79] text-white text-center py-2 font-semibold">
           Made by Anish Bhattarai
         </div>
 
         <div className="max-w-3xl mx-auto p-5 md:p-10">
+
           <div className="bg-white border rounded-lg shadow-sm">
+
             <div className="bg-[#3f7d32] text-white p-5">
+
               <h1 className="text-2xl font-bold">
                 Test Result
               </h1>
+
+              {mockMode ===
+                "free-demo" && (
+                <p className="text-sm mt-1">
+                  Free Demo Mock
+                </p>
+              )}
+
+              {mockMode ===
+                "paid" && (
+                <p className="text-sm mt-1">
+                  Paid Mock Test
+                </p>
+              )}
+
             </div>
 
             <div className="p-8 text-center">
+
               <p className="text-gray-500">
                 Candidate
               </p>
@@ -634,6 +1451,7 @@ export default function MockTestPage() {
               </h2>
 
               <div className="mt-8 border rounded-lg p-8">
+
                 <p className="text-gray-500">
                   Score
                 </p>
@@ -645,6 +1463,7 @@ export default function MockTestPage() {
                 <p className="text-gray-500">
                   / 250
                 </p>
+
               </div>
 
               <p
@@ -664,7 +1483,8 @@ export default function MockTestPage() {
               </p>
 
               <p className="text-gray-500 mt-2">
-                Questions: {mock.length}
+                Questions:{" "}
+                {mock.length}
               </p>
 
               <button
@@ -676,6 +1496,7 @@ export default function MockTestPage() {
               >
                 Back to Dashboard
               </button>
+
             </div>
           </div>
         </div>
@@ -683,20 +1504,32 @@ export default function MockTestPage() {
         <div className="bg-[#1f4e79] text-white text-center py-3 font-semibold">
           Made by Anish Bhattarai
         </div>
+
       </main>
     );
   }
 
+  /*
+   * ============================================
+   * MAIN EXAM INTERFACE
+   * ============================================
+   */
+
   return (
     <main className="min-h-screen bg-[#eef1f4]">
+
       <div className="bg-[#1f4e79] text-white text-center py-2 text-sm font-semibold">
         Made by Anish Bhattarai
       </div>
 
       <header className="bg-[#3f7d32] text-white">
+
         <div className="max-w-[1400px] mx-auto">
+
           <div className="p-4 flex flex-col lg:flex-row lg:justify-between gap-4">
+
             <div>
+
               <p className="text-xs opacity-90">
                 Japan Foundation Test for Basic
                 Japanese
@@ -706,39 +1539,71 @@ export default function MockTestPage() {
                 Candidate:{" "}
                 {student.full_name}
               </h1>
+
+              {mockMode ===
+                "free-demo" && (
+                <p className="text-xs mt-1 bg-white/20 inline-block px-2 py-1 rounded">
+                  FREE DEMO — 20 QUESTIONS
+                </p>
+              )}
+
+              {mockMode ===
+                "paid" && (
+                <p className="text-xs mt-1 bg-white/20 inline-block px-2 py-1 rounded">
+                  PAID MOCK TEST
+                </p>
+              )}
+
             </div>
 
             <div className="flex gap-3 items-center">
+
               <div className="border border-white/30 px-4 py-2 rounded bg-white/10">
+
                 <p className="text-xs">
                   Time Remaining
                 </p>
 
                 <p className="font-mono text-xl font-bold">
-                  {formatTime(timeLeft)}
+                  {formatTime(
+                    timeLeft
+                  )}
                 </p>
+
               </div>
 
               <button
-                onClick={finishTest}
-                disabled={savingResult}
+                onClick={
+                  finishTest
+                }
+                disabled={
+                  savingResult
+                }
                 className="bg-[#f4c430] text-black px-5 py-3 rounded font-bold disabled:opacity-50"
               >
                 {savingResult
                   ? "Saving..."
                   : "Finish Test"}
               </button>
+
             </div>
           </div>
 
           <div className="flex overflow-x-auto">
+
             {sections.map(
-              (section, index) => {
+              (
+                section,
+                index
+              ) => {
+
                 const active =
-                  index === sectionIndex;
+                  index ===
+                  sectionIndex;
 
                 const completed =
-                  index < sectionIndex;
+                  index <
+                  sectionIndex;
 
                 return (
                   <div
@@ -751,7 +1616,9 @@ export default function MockTestPage() {
                         : "bg-[#386f30] opacity-70"
                     }`}
                   >
-                    {index + 1}. {section}
+
+                    {index + 1}.{" "}
+                    {section}
 
                     {completed && (
                       <div className="text-xs mt-1">
@@ -764,31 +1631,41 @@ export default function MockTestPage() {
                         Current Section
                       </div>
                     )}
+
                   </div>
                 );
               }
             )}
+
           </div>
         </div>
       </header>
 
       <div className="bg-white border-b">
+
         <div className="max-w-[1400px] mx-auto p-4 flex flex-col md:flex-row justify-between gap-3">
+
           <div>
+
             <p className="font-bold">
               Question:{" "}
               {currentIndex + 1}
             </p>
 
             <p className="text-sm text-gray-500">
-              Section: {currentSection}
+              Section:{" "}
+              {currentSection}
             </p>
+
           </div>
 
           <div className="flex gap-2">
+
             <button
               onClick={() =>
-                setLanguageOpen(true)
+                setLanguageOpen(
+                  true
+                )
               }
               className="border border-[#1f4e79] text-[#1f4e79] px-4 py-2 rounded font-bold"
             >
@@ -796,30 +1673,41 @@ export default function MockTestPage() {
             </button>
 
             <button
-              onClick={toggleFlag}
+              onClick={
+                toggleFlag
+              }
               className={`border px-4 py-2 rounded font-bold ${
-                flags[currentQuestion.id]
+                flags[
+                  currentQuestion.id
+                ]
                   ? "bg-yellow-100 border-yellow-500"
                   : "bg-white"
               }`}
             >
               🚩 Flag
             </button>
+
           </div>
         </div>
       </div>
 
       <div className="max-w-[1400px] mx-auto p-4">
+
         <div className="grid lg:grid-cols-[1fr_280px] gap-4">
+
           <section className="bg-white border rounded-lg shadow-sm">
+
             <div className="p-6 md:p-10 min-h-[560px]">
+
               <p className="text-sm text-gray-500">
                 Choose one answer.
               </p>
 
               {currentQuestion.image_url && (
                 <div className="mt-6 flex justify-center">
+
                   <div className="w-full max-w-3xl border rounded-lg bg-gray-50 p-3">
+
                     <img
                       src={
                         currentQuestion.image_url
@@ -827,29 +1715,37 @@ export default function MockTestPage() {
                       alt="Question"
                       className="w-full max-h-[500px] object-contain rounded"
                     />
+
                   </div>
                 </div>
               )}
 
               {currentQuestion.question && (
                 <h2 className="text-xl md:text-2xl font-semibold mt-5 leading-relaxed">
-                  {currentQuestion.question}
+                  {
+                    currentQuestion.question
+                  }
                 </h2>
               )}
 
               {currentSection ===
                 "Listening Comprehension" && (
+
                 <div className="mt-7 border rounded-lg bg-gray-50 p-5">
+
                   <p className="font-bold">
                     Listening
                   </p>
 
                   <button
-                    onClick={playAudio}
+                    onClick={
+                      playAudio
+                    }
                     disabled={
                       (audioPlays[
                         currentQuestion.id
-                      ] || 0) >= 2
+                      ] || 0) >=
+                      2
                     }
                     className="mt-4 bg-[#1f4e79] text-white px-6 py-3 rounded font-bold disabled:bg-gray-400"
                   >
@@ -858,27 +1754,40 @@ export default function MockTestPage() {
 
                   <p className="mt-3 text-sm text-gray-500">
                     Plays:{" "}
-                    {audioPlays[
-                      currentQuestion.id
-                    ] || 0}{" "}
+                    {
+                      audioPlays[
+                        currentQuestion.id
+                      ] || 0
+                    }{" "}
                     / 2
                   </p>
+
                 </div>
               )}
 
               <div className="mt-8 space-y-3">
+
                 {currentQuestion.options.map(
-                  (option, index) => {
+                  (
+                    option,
+                    index
+                  ) => {
+
                     const selected =
                       answers[
                         currentQuestion.id
-                      ] === index;
+                      ] ===
+                      index;
 
                     return (
                       <button
-                        key={index}
+                        key={
+                          index
+                        }
                         onClick={() =>
-                          chooseAnswer(index)
+                          chooseAnswer(
+                            index
+                          )
                         }
                         className={`w-full text-left border-2 rounded-lg p-4 flex items-center gap-4 ${
                           selected
@@ -886,6 +1795,7 @@ export default function MockTestPage() {
                             : "bg-white border-gray-300 hover:bg-gray-50"
                         }`}
                       >
+
                         <span
                           className={`w-9 h-9 rounded-full flex items-center justify-center font-bold border ${
                             selected
@@ -894,23 +1804,30 @@ export default function MockTestPage() {
                           }`}
                         >
                           {String.fromCharCode(
-                            65 + index
+                            65 +
+                              index
                           )}
                         </span>
 
                         {option}
+
                       </button>
                     );
                   }
                 )}
+
               </div>
             </div>
 
             <div className="border-t bg-gray-50 p-4 flex justify-between gap-3">
+
               <button
-                onClick={previousQuestion}
+                onClick={
+                  previousQuestion
+                }
                 disabled={
-                  currentIndex === 0 ||
+                  currentIndex ===
+                    0 ||
                   currentSection ===
                     "Listening Comprehension"
                 }
@@ -920,50 +1837,77 @@ export default function MockTestPage() {
               </button>
 
               {currentIndex ===
-              sectionQuestions.length - 1 ? (
+              sectionQuestions.length -
+                1 ? (
+
                 <button
-                  onClick={finishSection}
-                  disabled={savingResult}
+                  onClick={
+                    finishSection
+                  }
+                  disabled={
+                    savingResult
+                  }
                   className="bg-[#f4c430] text-black px-6 py-3 rounded font-bold disabled:opacity-50"
                 >
-                  {sectionIndex === 3
+                  {sectionIndex ===
+                  3
                     ? "Finish Test"
                     : "Finish Section"}
                 </button>
+
               ) : (
+
                 <button
-                  onClick={nextQuestion}
+                  onClick={
+                    nextQuestion
+                  }
                   className="bg-[#1f4e79] text-white px-7 py-3 rounded font-bold"
                 >
                   Next →
                 </button>
+
               )}
+
             </div>
           </section>
 
           <aside className="bg-white border rounded-lg shadow-sm h-fit">
+
             <div className="p-5 border-b bg-gray-50">
+
               <h2 className="font-bold">
                 Answer Status
               </h2>
+
             </div>
 
             <div className="p-5">
+
               <div className="grid grid-cols-4 gap-2">
+
                 {sectionQuestions.map(
-                  (question, index) => {
+                  (
+                    question,
+                    index
+                  ) => {
+
                     const answered =
                       answers[
                         question.id
-                      ] !== undefined;
+                      ] !==
+                      undefined;
 
                     const active =
-                      index === currentIndex;
+                      index ===
+                      currentIndex;
 
                     return (
                       <button
-                        key={question.id}
+                        key={
+                          question.id
+                        }
                         onClick={() => {
+
                           if (
                             currentSection ===
                             "Listening Comprehension"
@@ -971,7 +1915,9 @@ export default function MockTestPage() {
                             return;
                           }
 
-                          setCurrentIndex(index);
+                          setCurrentIndex(
+                            index
+                          );
                         }}
                         className={`relative h-11 rounded border-2 font-bold ${
                           active
@@ -981,6 +1927,7 @@ export default function MockTestPage() {
                             : "bg-white border-gray-300"
                         }`}
                       >
+
                         {index + 1}
 
                         {flags[
@@ -990,27 +1937,35 @@ export default function MockTestPage() {
                             🚩
                           </span>
                         )}
+
                       </button>
                     );
                   }
                 )}
+
               </div>
 
               <div className="mt-6 border-t pt-5 text-sm space-y-3">
+
                 <p>
                   Answered:{" "}
                   <strong>
                     {
                       sectionQuestions.filter(
-                        (question) =>
+                        (
+                          question
+                        ) =>
                           answers[
                             question.id
-                          ] !== undefined
+                          ] !==
+                          undefined
                       ).length
                     }
                   </strong>{" "}
                   /{" "}
-                  {sectionQuestions.length}
+                  {
+                    sectionQuestions.length
+                  }
                 </p>
 
                 <p>
@@ -1019,9 +1974,25 @@ export default function MockTestPage() {
                     {mock.length}
                   </strong>
                 </p>
+
+                {mockMode ===
+                  "free-demo" && (
+                  <p className="text-green-700 font-semibold">
+                    Free Demo
+                  </p>
+                )}
+
+                {mockMode ===
+                  "paid" && (
+                  <p className="text-blue-700 font-semibold">
+                    Paid Mock
+                  </p>
+                )}
+
               </div>
             </div>
           </aside>
+
         </div>
       </div>
 
@@ -1030,43 +2001,60 @@ export default function MockTestPage() {
       </footer>
 
       {languageOpen && (
+
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+
           <div className="bg-white max-w-2xl w-full rounded-lg overflow-hidden">
+
             <div className="bg-[#3f7d32] text-white p-5 flex justify-between">
+
               <h2 className="font-bold">
                 Your Language — Nepali
               </h2>
 
               <button
                 onClick={() =>
-                  setLanguageOpen(false)
+                  setLanguageOpen(
+                    false
+                  )
                 }
                 className="text-2xl"
               >
                 ×
               </button>
+
             </div>
 
             <div className="p-6">
+
               <div className="border rounded-lg bg-gray-50 p-5 text-lg">
-                {currentQuestion.nepali ||
-                  "Nepali explanation will be available for this question."}
+                {
+                  currentQuestion.nepali ||
+                  "Nepali explanation will be available for this question."
+                }
               </div>
+
             </div>
 
             <div className="border-t p-4 text-right">
+
               <button
                 onClick={() =>
-                  setLanguageOpen(false)
+                  setLanguageOpen(
+                    false
+                  )
                 }
                 className="bg-[#1f4e79] text-white px-6 py-2 rounded font-bold"
               >
                 Close
               </button>
+
             </div>
+
           </div>
         </div>
       )}
+
     </main>
   );
 }
