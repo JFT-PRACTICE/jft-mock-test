@@ -195,9 +195,7 @@ export default function AdminPage() {
     });
   }
 
-  async function uploadQuestionImage(
-    file: File
-  ) {
+  async function uploadQuestionImage(file: File) {
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
@@ -496,12 +494,20 @@ export default function AdminPage() {
     if (!ok) return;
 
     try {
-      const { error } = await supabase
-        .from("results")
-        .delete()
-        .eq("id", id);
+      const { data: deletedRows, error } =
+        await supabase
+          .from("results")
+          .delete()
+          .eq("id", id)
+          .select("id");
 
       if (error) throw error;
+
+      if (!deletedRows || deletedRows.length === 0) {
+        throw new Error(
+          "Result was not deleted from database. Please check Supabase DELETE policy."
+        );
+      }
 
       setResults((prev) =>
         prev.filter(
@@ -586,13 +592,61 @@ export default function AdminPage() {
         questionsPerPage
     );
 
-  const passedResults = results.filter(
-    (result) => result.passed
-  ).length;
+  /*
+    ============================================================
+    UNIQUE STUDENT STATISTICS
+    ============================================================
 
-  const failedResults = results.filter(
-    (result) => !result.passed
-  ).length;
+    एउटै student ले धेरै पटक test दिए पनि
+    Students Tested मा एकपटक मात्र count हुन्छ।
+
+    Passed Students:
+    कम्तीमा एकपटक pass गरेका unique students।
+
+    Failed Students:
+    अहिलेसम्म एकपटक पनि pass नगरेका unique students।
+
+    Total Attempts:
+    सबै test attempts को वास्तविक संख्या।
+  */
+
+  const uniqueStudentIds = new Set(
+    results.map(
+      (result) => result.student_id
+    )
+  );
+
+  const totalStudentsTested =
+    uniqueStudentIds.size;
+
+  const passedStudentIds = new Set(
+    results
+      .filter(
+        (result) => result.passed
+      )
+      .map(
+        (result) => result.student_id
+      )
+  );
+
+  const passedStudents =
+    passedStudentIds.size;
+
+  const failedStudents = new Set(
+    results
+      .filter(
+        (result) =>
+          !passedStudentIds.has(
+            result.student_id
+          )
+      )
+      .map(
+        (result) => result.student_id
+      )
+  ).size;
+
+  const totalAttempts =
+    results.length;
 
   const averageScore =
     results.length > 0
@@ -600,7 +654,9 @@ export default function AdminPage() {
           results.reduce(
             (sum, result) =>
               sum +
-              Number(result.score || 0),
+              Number(
+                result.score || 0
+              ),
             0
           ) / results.length
         ).toFixed(1)
@@ -996,7 +1052,6 @@ export default function AdminPage() {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* SECTION */}
                     <select
                       value={
                         form.section
@@ -1027,7 +1082,6 @@ export default function AdminPage() {
                       </option>
                     </select>
 
-                    {/* CATEGORY */}
                     <input
                       value={
                         form.category
@@ -1043,7 +1097,6 @@ export default function AdminPage() {
                       className="border rounded-lg px-3 py-2"
                     />
 
-                    {/* QUESTION TEXT */}
                     <textarea
                       value={
                         form.question
@@ -1059,7 +1112,6 @@ export default function AdminPage() {
                       className="border rounded-lg px-3 py-2 md:col-span-2 min-h-24"
                     />
 
-                    {/* QUESTION IMAGE */}
                     <div className="md:col-span-2 border rounded-xl p-4 bg-gray-50">
                       <label className="block font-semibold text-gray-800 mb-2">
                         Question Image
@@ -1127,7 +1179,6 @@ export default function AdminPage() {
                       )}
                     </div>
 
-                    {/* OPTIONS */}
                     <input
                       value={
                         form.option_a
@@ -1188,7 +1239,6 @@ export default function AdminPage() {
                       className="border rounded-lg px-3 py-2"
                     />
 
-                    {/* CORRECT ANSWER */}
                     <select
                       value={
                         form.correct_answer
@@ -1219,7 +1269,6 @@ export default function AdminPage() {
                       </option>
                     </select>
 
-                    {/* DIFFICULTY */}
                     <select
                       value={
                         form.difficulty
@@ -1246,7 +1295,6 @@ export default function AdminPage() {
                       </option>
                     </select>
 
-                    {/* NEPALI */}
                     <textarea
                       value={
                         form.nepali
@@ -1262,7 +1310,6 @@ export default function AdminPage() {
                       className="border rounded-lg px-3 py-2 md:col-span-2 min-h-20"
                     />
 
-                    {/* AUDIO */}
                     <input
                       value={
                         form.audio_url
@@ -1373,7 +1420,6 @@ export default function AdminPage() {
                                 </span>
                               </div>
 
-                              {/* QUESTION IMAGE IN LIST */}
                               {question.image_url && (
                                 <div className="mb-4">
                                   <img
@@ -1666,7 +1712,8 @@ export default function AdminPage() {
                   </p>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
+                  {/* REGISTERED STUDENTS */}
                   <div className="bg-white rounded-2xl border p-6">
                     <div className="text-gray-500 text-sm">
                       Registered Students
@@ -1679,6 +1726,24 @@ export default function AdminPage() {
                     </div>
                   </div>
 
+                  {/* UNIQUE STUDENTS TESTED */}
+                  <div className="bg-white rounded-2xl border p-6">
+                    <div className="text-gray-500 text-sm">
+                      Students Tested
+                    </div>
+
+                    <div className="text-3xl font-bold mt-2">
+                      {
+                        totalStudentsTested
+                      }
+                    </div>
+
+                    <div className="text-xs text-gray-400 mt-1">
+                      Unique students
+                    </div>
+                  </div>
+
+                  {/* TOTAL QUESTIONS */}
                   <div className="bg-white rounded-2xl border p-6">
                     <div className="text-gray-500 text-sm">
                       Total Questions
@@ -1691,18 +1756,24 @@ export default function AdminPage() {
                     </div>
                   </div>
 
+                  {/* TOTAL ATTEMPTS */}
                   <div className="bg-white rounded-2xl border p-6">
                     <div className="text-gray-500 text-sm">
-                      Total Results
+                      Total Attempts
                     </div>
 
                     <div className="text-3xl font-bold mt-2">
                       {
-                        results.length
+                        totalAttempts
                       }
+                    </div>
+
+                    <div className="text-xs text-gray-400 mt-1">
+                      All test attempts
                     </div>
                   </div>
 
+                  {/* AVERAGE SCORE */}
                   <div className="bg-white rounded-2xl border p-6">
                     <div className="text-gray-500 text-sm">
                       Average Score
@@ -1712,31 +1783,46 @@ export default function AdminPage() {
                       {averageScore}{" "}
                       / 250
                     </div>
+
+                    <div className="text-xs text-gray-400 mt-1">
+                      All attempts
+                    </div>
                   </div>
                 </div>
 
+                {/* UNIQUE PASS / FAIL */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5">
+                  {/* PASSED STUDENTS */}
                   <div className="bg-white rounded-2xl border p-6">
                     <div className="text-gray-500 text-sm">
-                      Passed Results
+                      Passed Students
                     </div>
 
                     <div className="text-3xl font-bold text-green-600 mt-2">
                       {
-                        passedResults
+                        passedStudents
                       }
+                    </div>
+
+                    <div className="text-xs text-gray-400 mt-1">
+                      Unique students who passed at least once
                     </div>
                   </div>
 
+                  {/* FAILED STUDENTS */}
                   <div className="bg-white rounded-2xl border p-6">
                     <div className="text-gray-500 text-sm">
-                      Failed Results
+                      Failed Students
                     </div>
 
                     <div className="text-3xl font-bold text-red-600 mt-2">
                       {
-                        failedResults
+                        failedStudents
                       }
+                    </div>
+
+                    <div className="text-xs text-gray-400 mt-1">
+                      Unique students who have never passed
                     </div>
                   </div>
                 </div>
