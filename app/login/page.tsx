@@ -1,76 +1,115 @@
 "use client";
 
 import { useState } from "react";
+import { createClient } from "../admin/utils/supabase/client";
 
 export default function LoginPage() {
-const [studentId, setStudentId] = useState("");
-const [password, setPassword] = useState("");
+  const [studentId, setStudentId] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
 
-function login(e: React.FormEvent) {
-e.preventDefault();
+  async function login(e: React.FormEvent) {
+    e.preventDefault();
 
-const students = JSON.parse(localStorage.getItem("students") || "[]");
+    if (!studentId.trim() || !password.trim()) {
+      alert("Please enter Student ID and Password");
+      return;
+    }
 
-const student = students.find(
-  (item: any) =>
-    item.studentId === studentId && item.password === password
-);
+    try {
+      setLoading(true);
 
-if (!student) {
-  alert("Student ID or Password is wrong");
-  return;
-}
+      const supabase = createClient();
 
-localStorage.setItem("loggedInStudent", JSON.stringify(student));
+      const { data: student, error } = await supabase
+        .from("students")
+        .select("id, full_name, student_id, password, blocked")
+        .eq("student_id", studentId.trim())
+        .maybeSingle();
 
-window.location.href = "/dashboard";
+      if (error) {
+        throw new Error(error.message);
+      }
 
-}
+      if (!student || student.password !== password) {
+        alert("Student ID or Password is wrong");
+        return;
+      }
 
-return (
-<main className="min-h-screen flex items-center justify-center bg-gray-100 p-5">
-<div className="w-full max-w-md bg-white p-8 rounded-2xl shadow">
-<h1 className="text-3xl font-bold text-center">
-JFT Mock Test
-</h1>
+      if (student.blocked) {
+        alert("Your account has been blocked. Please contact admin.");
+        return;
+      }
 
-    <p className="text-center text-gray-500 mt-2">
-      Student Login
-    </p>
+      // Login भएको student को आवश्यक information मात्र save गर्ने
+      const loggedInStudent = {
+        id: student.id,
+        full_name: student.full_name,
+        student_id: student.student_id,
+        blocked: student.blocked,
+      };
 
-    <form onSubmit={login} className="mt-8 space-y-4">
-      <input
-        type="text"
-        placeholder="Student ID"
-        value={studentId}
-        onChange={(e) => setStudentId(e.target.value)}
-        className="w-full border p-3 rounded-lg"
-      />
+      localStorage.setItem(
+        "loggedInStudent",
+        JSON.stringify(loggedInStudent)
+      );
 
-      <input
-        type="password"
-        placeholder="Password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        className="w-full border p-3 rounded-lg"
-      />
+      window.location.href = "/dashboard";
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Login failed. Please try again."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
 
-      <button
-        type="submit"
-        className="w-full bg-black text-white p-3 rounded-lg"
-      >
-        Login
-      </button>
-    </form>
+  return (
+    <main className="min-h-screen flex items-center justify-center bg-gray-100 p-5">
+      <div className="w-full max-w-md bg-white p-8 rounded-2xl shadow">
+        <h1 className="text-3xl font-bold text-center">
+          JFT Mock Test
+        </h1>
 
-    <a
-      href="/register"
-      className="block text-center text-blue-600 mt-5"
-    >
-      Create Student Account
-    </a>
-  </div>
-</main>
+        <p className="text-center text-gray-500 mt-2">
+          Student Login
+        </p>
 
-);
+        <form onSubmit={login} className="mt-8 space-y-4">
+          <input
+            type="text"
+            placeholder="Student ID"
+            value={studentId}
+            onChange={(e) => setStudentId(e.target.value)}
+            className="w-full border p-3 rounded-lg"
+          />
+
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="w-full border p-3 rounded-lg"
+          />
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-black text-white p-3 rounded-lg disabled:opacity-50"
+          >
+            {loading ? "Logging in..." : "Login"}
+          </button>
+        </form>
+
+        <a
+          href="/register"
+          className="block text-center text-blue-600 mt-5"
+        >
+          Create Student Account
+        </a>
+      </div>
+    </main>
+  );
 }
