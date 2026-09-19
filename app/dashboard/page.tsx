@@ -19,9 +19,20 @@ type MockPackage = {
   enabled: boolean;
 };
 
+type Result = {
+  id: string;
+  score: number;
+  section_scores?: any;
+  answers?: any;
+  total_questions: number;
+  passed: boolean;
+  created_at: string;
+  is_deleted: boolean;
+};
+
 export default function DashboardPage() {
   const [student, setStudent] = useState<any>(null);
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<Result[]>([]);
 
   const [mockSettings, setMockSettings] =
     useState<MockSettings | null>(null);
@@ -30,6 +41,9 @@ export default function DashboardPage() {
 
   const [loadingMockSystem, setLoadingMockSystem] =
     useState(true);
+
+  const [deletingResultId, setDeletingResultId] =
+    useState<string | null>(null);
 
   useEffect(() => {
     async function loadDashboard() {
@@ -97,6 +111,9 @@ export default function DashboardPage() {
 
       // ============================================
       // RESULT HISTORY
+      // IMPORTANT:
+      // Load both visible and deleted results.
+      // Deleted results are needed for Total Attempts.
       // ============================================
 
       const {
@@ -105,7 +122,7 @@ export default function DashboardPage() {
       } = await supabase
         .from("results")
         .select(
-          "id, score, section_scores, answers, total_questions, passed, created_at"
+          "id, score, section_scores, answers, total_questions, passed, created_at, is_deleted"
         )
         .eq("student_id", currentDbStudent.id)
         .order("created_at", { ascending: false });
@@ -160,9 +177,82 @@ export default function DashboardPage() {
     loadDashboard();
   }, []);
 
+  // ============================================
+  // DELETE FAILED HISTORY
+  // This does NOT delete database record.
+  // It only hides it from visible history.
+  // ============================================
+
+  async function deleteFailedHistory(result: Result) {
+    if (result.passed) {
+      alert("Passed results cannot be deleted.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Are you sure you want to remove this failed result from your history?"
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingResultId(result.id);
+
+    const supabase = createClient();
+
+    const { error } = await supabase
+      .from("results")
+      .update({
+        is_deleted: true,
+      })
+      .eq("id", result.id)
+      .eq("student_id", student.id)
+      .eq("passed", false);
+
+    if (error) {
+      alert(
+        "Failed to delete this history. Please try again."
+      );
+
+      setDeletingResultId(null);
+      return;
+    }
+
+    // Update local state.
+    // Keep the result because Total Attempts must remain unchanged.
+    setResults((currentResults) =>
+      currentResults.map((item) =>
+        item.id === result.id
+          ? {
+              ...item,
+              is_deleted: true,
+            }
+          : item
+      )
+    );
+
+    setDeletingResultId(null);
+  }
+
   if (!student) {
     return null;
   }
+
+  // ============================================
+  // TOTAL ATTEMPTS
+  // Deleted results are ALSO counted.
+  // ============================================
+
+  const totalAttempts = results.length;
+
+  // ============================================
+  // ONLY NON-DELETED RESULTS ARE SHOWN
+  // ============================================
+
+  const visibleResults = results.filter(
+    (result) => !result.is_deleted
+  );
 
   const paidSystemEnabled =
     mockSettings?.paid_system_enabled === true;
@@ -191,6 +281,24 @@ export default function DashboardPage() {
           <p className="mt-1 text-gray-500">
             Student ID: {student.student_id}
           </p>
+
+          {/* ========================================
+              TOTAL ATTEMPTS
+          ======================================== */}
+
+          <div className="mt-6 bg-gray-50 border rounded-xl p-5">
+            <p className="text-gray-600">
+              Total Attempts
+            </p>
+
+            <p className="text-3xl font-bold mt-1">
+              {totalAttempts}
+            </p>
+
+            <p className="text-sm text-gray-500 mt-1">
+              Deleted failed attempts are still counted.
+            </p>
+          </div>
 
           {/* ========================================
               NORMAL MOCK TEST
@@ -366,18 +474,29 @@ export default function DashboardPage() {
 
           <div className="mt-10">
 
-            <h2 className="text-2xl font-bold">
-              My Result History
-            </h2>
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
 
-            {results.length === 0 ? (
+              <h2 className="text-2xl font-bold">
+                My Result History
+              </h2>
+
+              <p className="text-sm text-gray-500">
+                Total Attempts:{" "}
+                <span className="font-bold text-gray-700">
+                  {totalAttempts}
+                </span>
+              </p>
+
+            </div>
+
+            {visibleResults.length === 0 ? (
               <p className="text-gray-500 mt-4">
-                You have not taken any test yet.
+                You have not taken any visible test yet.
               </p>
             ) : (
               <div className="mt-5 space-y-3">
 
-                {results.map((result, index) => {
+                {visibleResults.map((result, index) => {
 
                   const date = new Date(
                     result.created_at
@@ -389,7 +508,7 @@ export default function DashboardPage() {
                       className="border rounded-xl p-5 bg-gray-50"
                     >
 
-                      <div className="flex flex-col md:flex-row md:justify-between gap-3">
+                      <div className="flex flex-col md:flex-row md:justify-between gap-4">
 
                         <div>
                           <p className="font-bold">
@@ -423,6 +542,26 @@ export default function DashboardPage() {
                               : "Not Passed"}
                           </span>
                         </p>
+
+                        {/* =================================
+                            DELETE FAILED RESULT ONLY
+                        ================================= */}
+
+                        {!result.passed && (
+                          <button
+                            onClick={() =>
+                              deleteFailedHistory(result)
+                            }
+                            disabled={
+                              deletingResultId === result.id
+                            }
+                            className="text-red-600 font-semibold border border-red-200 px-4 py-2 rounded-lg hover:bg-red-50 disabled:opacity-50"
+                          >
+                            {deletingResultId === result.id
+                              ? "Deleting..."
+                              : "Delete History"}
+                          </button>
+                        )}
 
                       </div>
 
