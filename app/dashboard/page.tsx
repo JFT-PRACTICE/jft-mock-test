@@ -174,6 +174,21 @@ export default function DashboardPage() {
           >
             Logout
           </button>
+
+          {/* Back to Home */}
+          <div className="mt-6 text-center">
+            <a
+              href="/"
+              className="text-gray-600 hover:text-black"
+            >
+              ← Back to Home
+            </a>
+          </div>
+
+          {/* Footer */}
+          <p className="mt-6 text-center text-xs text-gray-500">
+            Made by Anish Bhattarai
+          </p>
         </div>
       </div>
     </main>
