@@ -48,13 +48,11 @@ export default function LoginPage() {
         blocked: student.blocked,
       };
 
-      // Session only — browser/tab session सकिएपछि login हट्छ
       sessionStorage.setItem(
         "loggedInStudent",
         JSON.stringify(loggedInStudent)
       );
 
-      // पुरानो localStorage login हटाउने
       localStorage.removeItem("loggedInStudent");
 
       window.location.href = "/dashboard";
@@ -111,6 +109,14 @@ export default function LoginPage() {
           className="block text-center text-blue-600 mt-5"
         >
           Create Student Account
+        </a>
+
+        {/* Back to Home */}
+        <a
+          href="/"
+          className="block text-center mt-5 text-gray-600 hover:text-black"
+        >
+          ← Back to Home
         </a>
       </div>
     </main>
