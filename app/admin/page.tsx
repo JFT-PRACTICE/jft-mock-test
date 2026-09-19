@@ -38,10 +38,15 @@ type Question = {
   created_at: string;
 };
 
-type Tab = "students" | "questions" | "results" | "statistics";
+type Tab =
+  | "students"
+  | "questions"
+  | "results"
+  | "statistics";
 
 export default function AdminPage() {
-  const [activeTab, setActiveTab] = useState<Tab>("students");
+  const [activeTab, setActiveTab] =
+    useState<Tab>("students");
 
   const [students, setStudents] = useState<Student[]>([]);
   const [results, setResults] = useState<Result[]>([]);
@@ -56,12 +61,14 @@ export default function AdminPage() {
   const [questionPage, setQuestionPage] = useState(1);
   const questionsPerPage = 20;
 
-  const [selectedStudent, setSelectedStudent] = useState<Student | null>(
-    null
-  );
+  const [selectedStudent, setSelectedStudent] =
+    useState<Student | null>(null);
 
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [questionLoading, setQuestionLoading] = useState(false);
+  const [editingId, setEditingId] =
+    useState<string | null>(null);
+
+  const [questionLoading, setQuestionLoading] =
+    useState(false);
 
   const [form, setForm] = useState({
     section: "Script & Vocabulary",
@@ -78,9 +85,11 @@ export default function AdminPage() {
   });
 
   useEffect(() => {
-    const admin = localStorage.getItem("loggedInAdmin");
+    const adminLoggedIn = sessionStorage.getItem(
+      "jft_admin_logged_in"
+    );
 
-    if (!admin) {
+    if (adminLoggedIn !== "true") {
       window.location.href = "/admin/login";
       return;
     }
@@ -96,34 +105,49 @@ export default function AdminPage() {
         setRefreshing(true);
       }
 
-      const [studentsResponse, resultsResponse, questionsResponse] =
-        await Promise.all([
-          supabase
-            .from("students")
-            .select("*")
-            .order("created_at", { ascending: false }),
+      const [
+        studentsResponse,
+        resultsResponse,
+        questionsResponse,
+      ] = await Promise.all([
+        supabase
+          .from("students")
+          .select("*")
+          .order("created_at", {
+            ascending: false,
+          }),
 
-          supabase
-            .from("results")
-            .select("*")
-            .order("created_at", { ascending: false }),
+        supabase
+          .from("results")
+          .select("*")
+          .order("created_at", {
+            ascending: false,
+          }),
 
-          supabase
-            .from("questions")
-            .select("*")
-            .order("created_at", { ascending: false }),
-        ]);
+        supabase
+          .from("questions")
+          .select("*")
+          .order("created_at", {
+            ascending: false,
+          }),
+      ]);
 
       if (studentsResponse.error) {
-        throw new Error(`Students: ${studentsResponse.error.message}`);
+        throw new Error(
+          `Students: ${studentsResponse.error.message}`
+        );
       }
 
       if (resultsResponse.error) {
-        throw new Error(`Results: ${resultsResponse.error.message}`);
+        throw new Error(
+          `Results: ${resultsResponse.error.message}`
+        );
       }
 
       if (questionsResponse.error) {
-        throw new Error(`Questions: ${questionsResponse.error.message}`);
+        throw new Error(
+          `Questions: ${questionsResponse.error.message}`
+        );
       }
 
       setStudents(studentsResponse.data || []);
@@ -233,15 +257,18 @@ export default function AdminPage() {
     setEditingId(question.id);
 
     setForm({
-      section: question.section || "Script & Vocabulary",
+      section:
+        question.section || "Script & Vocabulary",
       category: question.category || "",
       question: question.question || "",
       option_a: question.option_a || "",
       option_b: question.option_b || "",
       option_c: question.option_c || "",
       option_d: question.option_d || "",
-      correct_answer: question.correct_answer || "A",
-      difficulty: question.difficulty || "medium",
+      correct_answer:
+        question.correct_answer || "A",
+      difficulty:
+        question.difficulty || "medium",
       nepali: question.nepali || "",
       audio_url: question.audio_url || "",
     });
@@ -267,7 +294,9 @@ export default function AdminPage() {
 
       if (error) throw error;
 
-      setQuestions((prev) => prev.filter((q) => q.id !== id));
+      setQuestions((prev) =>
+        prev.filter((q) => q.id !== id)
+      );
 
       alert("Question deleted successfully!");
     } catch (error) {
@@ -281,7 +310,9 @@ export default function AdminPage() {
     }
   }
 
-  async function toggleStudentBlock(student: Student) {
+  async function toggleStudentBlock(
+    student: Student
+  ) {
     try {
       const { error } = await supabase
         .from("students")
@@ -335,7 +366,9 @@ export default function AdminPage() {
       if (error) throw error;
 
       setStudents((prev) =>
-        prev.filter((item) => item.id !== student.id)
+        prev.filter(
+          (item) => item.id !== student.id
+        )
       );
 
       setSelectedStudent(null);
@@ -366,7 +399,9 @@ export default function AdminPage() {
       if (error) throw error;
 
       setResults((prev) =>
-        prev.filter((result) => result.id !== id)
+        prev.filter(
+          (result) => result.id !== id
+        )
       );
 
       alert("Result deleted successfully!");
@@ -382,44 +417,69 @@ export default function AdminPage() {
   }
 
   function logout() {
-    localStorage.removeItem("loggedInAdmin");
+    sessionStorage.removeItem(
+      "jft_admin_logged_in"
+    );
+
+    sessionStorage.removeItem(
+      "jft_admin_username"
+    );
+
     window.location.href = "/admin/login";
   }
 
   const filteredStudents = useMemo(() => {
-    const search = studentSearch.toLowerCase().trim();
+    const search =
+      studentSearch.toLowerCase().trim();
 
     if (!search) return students;
 
     return students.filter(
       (student) =>
-        student.full_name.toLowerCase().includes(search) ||
-        student.student_id.toLowerCase().includes(search)
+        student.full_name
+          .toLowerCase()
+          .includes(search) ||
+        student.student_id
+          .toLowerCase()
+          .includes(search)
     );
   }, [students, studentSearch]);
 
   const filteredQuestions = useMemo(() => {
-    const search = questionSearch.toLowerCase().trim();
+    const search =
+      questionSearch.toLowerCase().trim();
 
     if (!search) return questions;
 
     return questions.filter(
       (question) =>
-        question.question.toLowerCase().includes(search) ||
-        question.section.toLowerCase().includes(search) ||
-        (question.category || "").toLowerCase().includes(search)
+        question.question
+          .toLowerCase()
+          .includes(search) ||
+        question.section
+          .toLowerCase()
+          .includes(search) ||
+        (question.category || "")
+          .toLowerCase()
+          .includes(search)
     );
   }, [questions, questionSearch]);
 
   const totalQuestionPages = Math.max(
     1,
-    Math.ceil(filteredQuestions.length / questionsPerPage)
+    Math.ceil(
+      filteredQuestions.length /
+        questionsPerPage
+    )
   );
 
-  const visibleQuestions = filteredQuestions.slice(
-    (questionPage - 1) * questionsPerPage,
-    questionPage * questionsPerPage
-  );
+  const visibleQuestions =
+    filteredQuestions.slice(
+      (questionPage - 1) *
+        questionsPerPage,
+      questionPage *
+        questionsPerPage
+    );
 
   const passedResults = results.filter(
     (result) => result.passed
@@ -433,7 +493,9 @@ export default function AdminPage() {
     results.length > 0
       ? (
           results.reduce(
-            (sum, result) => sum + Number(result.score || 0),
+            (sum, result) =>
+              sum +
+              Number(result.score || 0),
             0
           ) / results.length
         ).toFixed(1)
@@ -444,10 +506,18 @@ export default function AdminPage() {
   }, [questionSearch]);
 
   useEffect(() => {
-    if (questionPage > totalQuestionPages) {
-      setQuestionPage(totalQuestionPages);
+    if (
+      questionPage >
+      totalQuestionPages
+    ) {
+      setQuestionPage(
+        totalQuestionPages
+      );
     }
-  }, [questionPage, totalQuestionPages]);
+  }, [
+    questionPage,
+    totalQuestionPages,
+  ]);
 
   function menuButton(
     tab: Tab,
@@ -455,11 +525,14 @@ export default function AdminPage() {
     title: string,
     count?: number
   ) {
-    const active = activeTab === tab;
+    const active =
+      activeTab === tab;
 
     return (
       <button
-        onClick={() => setActiveTab(tab)}
+        onClick={() =>
+          setActiveTab(tab)
+        }
         className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-left transition ${
           active
             ? "bg-blue-600 text-white"
@@ -467,8 +540,13 @@ export default function AdminPage() {
         }`}
       >
         <span className="flex items-center gap-3">
-          <span className="text-xl">{icon}</span>
-          <span className="font-semibold">{title}</span>
+          <span className="text-xl">
+            {icon}
+          </span>
+
+          <span className="font-semibold">
+            {title}
+          </span>
         </span>
 
         {count !== undefined && (
@@ -493,6 +571,7 @@ export default function AdminPage() {
           <div className="text-2xl font-bold mb-2">
             Loading Admin Dashboard...
           </div>
+
           <p className="text-gray-500">
             Please wait.
           </p>
@@ -510,18 +589,24 @@ export default function AdminPage() {
             <h1 className="text-2xl font-bold text-gray-900">
               JFT Admin Dashboard
             </h1>
+
             <p className="text-sm text-gray-500">
-              Manage students, questions and results
+              Manage students, questions and
+              results
             </p>
           </div>
 
           <div className="flex gap-2">
             <button
-              onClick={() => loadData()}
+              onClick={() =>
+                loadData()
+              }
               disabled={refreshing}
               className="bg-blue-600 text-white px-4 py-2 rounded-lg disabled:opacity-50"
             >
-              {refreshing ? "Refreshing..." : "Refresh"}
+              {refreshing
+                ? "Refreshing..."
+                : "Refresh"}
             </button>
 
             <button
@@ -536,7 +621,7 @@ export default function AdminPage() {
 
       <div className="max-w-7xl mx-auto p-4">
         <div className="grid grid-cols-1 lg:grid-cols-[250px_1fr] gap-5">
-          {/* SIDEBAR / FOLDERS */}
+          {/* SIDEBAR */}
           <aside>
             <div className="bg-gray-50 rounded-2xl p-3 border lg:sticky lg:top-24">
               <div className="text-xs uppercase tracking-wide text-gray-400 px-3 py-2 font-bold">
@@ -574,108 +659,129 @@ export default function AdminPage() {
             </div>
           </aside>
 
-          {/* MAIN CONTENT */}
+          {/* MAIN */}
           <section>
-            {/* REGISTERED STUDENTS */}
-            {activeTab === "students" && (
+            {/* STUDENTS */}
+            {activeTab ===
+              "students" && (
               <div className="bg-white rounded-2xl shadow-sm border p-5">
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-5">
                   <div>
                     <h2 className="text-2xl font-bold">
                       Registered Students
                     </h2>
+
                     <p className="text-gray-500 text-sm">
-                      Manage all registered student accounts.
+                      Manage all registered
+                      student accounts.
                     </p>
                   </div>
 
                   <input
                     type="text"
-                    value={studentSearch}
+                    value={
+                      studentSearch
+                    }
                     onChange={(e) =>
-                      setStudentSearch(e.target.value)
+                      setStudentSearch(
+                        e.target.value
+                      )
                     }
                     placeholder="Search student name or ID..."
                     className="border rounded-lg px-4 py-2 w-full md:w-80 outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
-                {filteredStudents.length === 0 ? (
+                {filteredStudents.length ===
+                0 ? (
                   <div className="py-12 text-center text-gray-500">
                     No students found.
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {filteredStudents.map((student) => (
-                      <div
-                        key={student.id}
-                        className="border rounded-xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4"
-                      >
-                        <div>
-                          <div className="font-bold text-lg">
-                            {student.full_name}
+                    {filteredStudents.map(
+                      (student) => (
+                        <div
+                          key={student.id}
+                          className="border rounded-xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4"
+                        >
+                          <div>
+                            <div className="font-bold text-lg">
+                              {
+                                student.full_name
+                              }
+                            </div>
+
+                            <div className="text-sm text-gray-500">
+                              Student ID:{" "}
+                              {
+                                student.student_id
+                              }
+                            </div>
+
+                            <div className="text-xs text-gray-400 mt-1">
+                              Registered:{" "}
+                              {new Date(
+                                student.created_at
+                              ).toLocaleString()}
+                            </div>
+
+                            <span
+                              className={`inline-block mt-2 px-2 py-1 rounded-full text-xs font-semibold ${
+                                student.blocked
+                                  ? "bg-red-100 text-red-700"
+                                  : "bg-green-100 text-green-700"
+                              }`}
+                            >
+                              {student.blocked
+                                ? "BLOCKED"
+                                : "ACTIVE"}
+                            </span>
                           </div>
 
-                          <div className="text-sm text-gray-500">
-                            Student ID: {student.student_id}
-                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              onClick={() =>
+                                setSelectedStudent(
+                                  student
+                                )
+                              }
+                              className="bg-gray-100 px-3 py-2 rounded-lg"
+                            >
+                              View
+                            </button>
 
-                          <div className="text-xs text-gray-400 mt-1">
-                            Registered:{" "}
-                            {new Date(
-                              student.created_at
-                            ).toLocaleString()}
-                          </div>
+                            <button
+                              onClick={() =>
+                                toggleStudentBlock(
+                                  student
+                                )
+                              }
+                              className={`px-3 py-2 rounded-lg text-white ${
+                                student.blocked
+                                  ? "bg-green-600"
+                                  : "bg-orange-500"
+                              }`}
+                            >
+                              {student.blocked
+                                ? "Unblock"
+                                : "Block"}
+                            </button>
 
-                          <span
-                            className={`inline-block mt-2 px-2 py-1 rounded-full text-xs font-semibold ${
-                              student.blocked
-                                ? "bg-red-100 text-red-700"
-                                : "bg-green-100 text-green-700"
-                            }`}
-                          >
-                            {student.blocked
-                              ? "BLOCKED"
-                              : "ACTIVE"}
-                          </span>
+                            <button
+                              onClick={() =>
+                                deleteStudent(
+                                  student
+                                )
+                              }
+                              className="bg-red-600 text-white px-3 py-2 rounded-lg"
+                            >
+                              Delete
+                            </button>
+                          </div>
                         </div>
-
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            onClick={() =>
-                              setSelectedStudent(student)
-                            }
-                            className="bg-gray-100 px-3 py-2 rounded-lg"
-                          >
-                            View
-                          </button>
-
-                          <button
-                            onClick={() =>
-                              toggleStudentBlock(student)
-                            }
-                            className={`px-3 py-2 rounded-lg text-white ${
-                              student.blocked
-                                ? "bg-green-600"
-                                : "bg-orange-500"
-                            }`}
-                          >
-                            {student.blocked
-                              ? "Unblock"
-                              : "Block"}
-                          </button>
-
-                          <button
-                            onClick={() =>
-                              deleteStudent(student)
-                            }
-                            className="bg-red-600 text-white px-3 py-2 rounded-lg"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                      )
+                    )}
                   </div>
                 )}
 
@@ -689,7 +795,9 @@ export default function AdminPage() {
 
                         <button
                           onClick={() =>
-                            setSelectedStudent(null)
+                            setSelectedStudent(
+                              null
+                            )
                           }
                           className="text-gray-500 text-xl"
                         >
@@ -702,14 +810,18 @@ export default function AdminPage() {
                           <span className="font-semibold">
                             Name:
                           </span>{" "}
-                          {selectedStudent.full_name}
+                          {
+                            selectedStudent.full_name
+                          }
                         </div>
 
                         <div>
                           <span className="font-semibold">
                             Student ID:
                           </span>{" "}
-                          {selectedStudent.student_id}
+                          {
+                            selectedStudent.student_id
+                          }
                         </div>
 
                         <div>
@@ -733,7 +845,9 @@ export default function AdminPage() {
 
                       <button
                         onClick={() =>
-                          setSelectedStudent(null)
+                          setSelectedStudent(
+                            null
+                          )
                         }
                         className="w-full mt-6 bg-blue-600 text-white py-2 rounded-lg"
                       >
@@ -746,9 +860,9 @@ export default function AdminPage() {
             )}
 
             {/* QUESTIONS */}
-            {activeTab === "questions" && (
+            {activeTab ===
+              "questions" && (
               <div className="space-y-5">
-                {/* QUESTION FORM */}
                 <div className="bg-white rounded-2xl shadow-sm border p-5">
                   <div className="flex justify-between items-center mb-5">
                     <div>
@@ -759,13 +873,16 @@ export default function AdminPage() {
                       </h2>
 
                       <p className="text-sm text-gray-500">
-                        Add or update questions in the question bank.
+                        Add or update questions
+                        in the question bank.
                       </p>
                     </div>
 
                     {editingId && (
                       <button
-                        onClick={resetQuestionForm}
+                        onClick={
+                          resetQuestionForm
+                        }
                         className="bg-gray-200 px-4 py-2 rounded-lg"
                       >
                         Cancel Edit
@@ -775,11 +892,14 @@ export default function AdminPage() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <select
-                      value={form.section}
+                      value={
+                        form.section
+                      }
                       onChange={(e) =>
                         setForm({
                           ...form,
-                          section: e.target.value,
+                          section:
+                            e.target.value,
                         })
                       }
                       className="border rounded-lg px-3 py-2"
@@ -787,23 +907,29 @@ export default function AdminPage() {
                       <option>
                         Script & Vocabulary
                       </option>
+
                       <option>
                         Conversation & Expression
                       </option>
+
                       <option>
                         Listening Comprehension
                       </option>
+
                       <option>
                         Reading Comprehension
                       </option>
                     </select>
 
                     <input
-                      value={form.category}
+                      value={
+                        form.category
+                      }
                       onChange={(e) =>
                         setForm({
                           ...form,
-                          category: e.target.value,
+                          category:
+                            e.target.value,
                         })
                       }
                       placeholder="Category"
@@ -811,11 +937,14 @@ export default function AdminPage() {
                     />
 
                     <textarea
-                      value={form.question}
+                      value={
+                        form.question
+                      }
                       onChange={(e) =>
                         setForm({
                           ...form,
-                          question: e.target.value,
+                          question:
+                            e.target.value,
                         })
                       }
                       placeholder="Question"
@@ -823,11 +952,14 @@ export default function AdminPage() {
                     />
 
                     <input
-                      value={form.option_a}
+                      value={
+                        form.option_a
+                      }
                       onChange={(e) =>
                         setForm({
                           ...form,
-                          option_a: e.target.value,
+                          option_a:
+                            e.target.value,
                         })
                       }
                       placeholder="Option A"
@@ -835,11 +967,14 @@ export default function AdminPage() {
                     />
 
                     <input
-                      value={form.option_b}
+                      value={
+                        form.option_b
+                      }
                       onChange={(e) =>
                         setForm({
                           ...form,
-                          option_b: e.target.value,
+                          option_b:
+                            e.target.value,
                         })
                       }
                       placeholder="Option B"
@@ -847,11 +982,14 @@ export default function AdminPage() {
                     />
 
                     <input
-                      value={form.option_c}
+                      value={
+                        form.option_c
+                      }
                       onChange={(e) =>
                         setForm({
                           ...form,
-                          option_c: e.target.value,
+                          option_c:
+                            e.target.value,
                         })
                       }
                       placeholder="Option C"
@@ -859,11 +997,14 @@ export default function AdminPage() {
                     />
 
                     <input
-                      value={form.option_d}
+                      value={
+                        form.option_d
+                      }
                       onChange={(e) =>
                         setForm({
                           ...form,
-                          option_d: e.target.value,
+                          option_d:
+                            e.target.value,
                         })
                       }
                       placeholder="Option D"
@@ -871,11 +1012,14 @@ export default function AdminPage() {
                     />
 
                     <select
-                      value={form.correct_answer}
+                      value={
+                        form.correct_answer
+                      }
                       onChange={(e) =>
                         setForm({
                           ...form,
-                          correct_answer: e.target.value,
+                          correct_answer:
+                            e.target.value,
                         })
                       }
                       className="border rounded-lg px-3 py-2"
@@ -883,23 +1027,29 @@ export default function AdminPage() {
                       <option value="A">
                         Correct Answer: A
                       </option>
+
                       <option value="B">
                         Correct Answer: B
                       </option>
+
                       <option value="C">
                         Correct Answer: C
                       </option>
+
                       <option value="D">
                         Correct Answer: D
                       </option>
                     </select>
 
                     <select
-                      value={form.difficulty}
+                      value={
+                        form.difficulty
+                      }
                       onChange={(e) =>
                         setForm({
                           ...form,
-                          difficulty: e.target.value,
+                          difficulty:
+                            e.target.value,
                         })
                       }
                       className="border rounded-lg px-3 py-2"
@@ -907,20 +1057,25 @@ export default function AdminPage() {
                       <option value="easy">
                         Easy
                       </option>
+
                       <option value="medium">
                         Medium
                       </option>
+
                       <option value="hard">
                         Hard
                       </option>
                     </select>
 
                     <textarea
-                      value={form.nepali}
+                      value={
+                        form.nepali
+                      }
                       onChange={(e) =>
                         setForm({
                           ...form,
-                          nepali: e.target.value,
+                          nepali:
+                            e.target.value,
                         })
                       }
                       placeholder="Nepali explanation"
@@ -928,11 +1083,14 @@ export default function AdminPage() {
                     />
 
                     <input
-                      value={form.audio_url}
+                      value={
+                        form.audio_url
+                      }
                       onChange={(e) =>
                         setForm({
                           ...form,
-                          audio_url: e.target.value,
+                          audio_url:
+                            e.target.value,
                         })
                       }
                       placeholder="Audio URL (optional)"
@@ -941,8 +1099,12 @@ export default function AdminPage() {
                   </div>
 
                   <button
-                    onClick={saveQuestion}
-                    disabled={questionLoading}
+                    onClick={
+                      saveQuestion
+                    }
+                    disabled={
+                      questionLoading
+                    }
                     className="mt-5 bg-blue-600 text-white px-5 py-3 rounded-lg disabled:opacity-50"
                   >
                     {questionLoading
@@ -953,7 +1115,6 @@ export default function AdminPage() {
                   </button>
                 </div>
 
-                {/* QUESTION LIST */}
                 <div className="bg-white rounded-2xl shadow-sm border p-5">
                   <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-5">
                     <div>
@@ -962,15 +1123,20 @@ export default function AdminPage() {
                       </h2>
 
                       <p className="text-sm text-gray-500">
-                        Showing 20 questions per page.
+                        Showing 20 questions per
+                        page.
                       </p>
                     </div>
 
                     <input
                       type="text"
-                      value={questionSearch}
+                      value={
+                        questionSearch
+                      }
                       onChange={(e) =>
-                        setQuestionSearch(e.target.value)
+                        setQuestionSearch(
+                          e.target.value
+                        )
                       }
                       placeholder="Search questions..."
                       className="border rounded-lg px-4 py-2 w-full md:w-80"
@@ -980,16 +1146,23 @@ export default function AdminPage() {
                   <div className="mb-4 text-sm text-gray-500">
                     Total:{" "}
                     <span className="font-bold">
-                      {filteredQuestions.length}
+                      {
+                        filteredQuestions.length
+                      }
                     </span>{" "}
                     questions
                   </div>
 
                   <div className="space-y-4">
                     {visibleQuestions.map(
-                      (question, index) => (
+                      (
+                        question,
+                        index
+                      ) => (
                         <div
-                          key={question.id}
+                          key={
+                            question.id
+                          }
                           className="border rounded-xl p-4"
                         >
                           <div className="flex flex-col md:flex-row md:justify-between gap-3">
@@ -997,37 +1170,69 @@ export default function AdminPage() {
                               <div className="flex flex-wrap gap-2 mb-2">
                                 <span className="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded-full">
                                   #
-                                  {(questionPage - 1) *
+                                  {(questionPage -
+                                    1) *
                                     questionsPerPage +
                                     index +
                                     1}
                                 </span>
 
                                 <span className="bg-gray-100 text-gray-700 text-xs px-2 py-1 rounded-full">
-                                  {question.section}
+                                  {
+                                    question.section
+                                  }
                                 </span>
 
                                 <span className="bg-purple-100 text-purple-700 text-xs px-2 py-1 rounded-full">
-                                  {question.difficulty}
+                                  {
+                                    question.difficulty
+                                  }
                                 </span>
                               </div>
 
                               <div className="font-semibold text-lg">
-                                {question.question}
+                                {
+                                  question.question
+                                }
                               </div>
 
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 text-sm">
-                                <div>A. {question.option_a}</div>
-                                <div>B. {question.option_b}</div>
-                                <div>C. {question.option_c}</div>
-                                <div>D. {question.option_d}</div>
+                                <div>
+                                  A.{" "}
+                                  {
+                                    question.option_a
+                                  }
+                                </div>
+
+                                <div>
+                                  B.{" "}
+                                  {
+                                    question.option_b
+                                  }
+                                </div>
+
+                                <div>
+                                  C.{" "}
+                                  {
+                                    question.option_c
+                                  }
+                                </div>
+
+                                <div>
+                                  D.{" "}
+                                  {
+                                    question.option_d
+                                  }
+                                </div>
                               </div>
 
                               <div className="mt-3 text-sm">
                                 <span className="font-bold">
                                   Correct:
                                 </span>{" "}
-                                {question.correct_answer}
+                                {
+                                  question.correct_answer
+                                }
                               </div>
 
                               {question.nepali && (
@@ -1035,7 +1240,9 @@ export default function AdminPage() {
                                   <span className="font-bold">
                                     Nepali:
                                   </span>{" "}
-                                  {question.nepali}
+                                  {
+                                    question.nepali
+                                  }
                                 </div>
                               )}
                             </div>
@@ -1043,7 +1250,9 @@ export default function AdminPage() {
                             <div className="flex md:flex-col gap-2">
                               <button
                                 onClick={() =>
-                                  editQuestion(question)
+                                  editQuestion(
+                                    question
+                                  )
                                 }
                                 className="bg-yellow-500 text-white px-3 py-2 rounded-lg"
                               >
@@ -1052,7 +1261,9 @@ export default function AdminPage() {
 
                               <button
                                 onClick={() =>
-                                  deleteQuestion(question.id)
+                                  deleteQuestion(
+                                    question.id
+                                  )
                                 }
                                 className="bg-red-600 text-white px-3 py-2 rounded-lg"
                               >
@@ -1065,43 +1276,59 @@ export default function AdminPage() {
                     )}
                   </div>
 
-                  {visibleQuestions.length === 0 && (
+                  {visibleQuestions.length ===
+                    0 && (
                     <div className="text-center py-10 text-gray-500">
                       No questions found.
                     </div>
                   )}
 
-                  {/* PAGINATION */}
-                  {filteredQuestions.length > 0 && (
+                  {filteredQuestions.length >
+                    0 && (
                     <div className="flex flex-wrap justify-center items-center gap-2 mt-6">
                       <button
                         onClick={() =>
-                          setQuestionPage((p) =>
-                            Math.max(1, p - 1)
+                          setQuestionPage(
+                            (p) =>
+                              Math.max(
+                                1,
+                                p - 1
+                              )
                           )
                         }
-                        disabled={questionPage === 1}
+                        disabled={
+                          questionPage ===
+                          1
+                        }
                         className="px-4 py-2 rounded-lg bg-gray-200 disabled:opacity-40"
                       >
                         ← Previous
                       </button>
 
                       <span className="px-4 py-2 font-semibold">
-                        Page {questionPage} of{" "}
-                        {totalQuestionPages}
+                        Page{" "}
+                        {
+                          questionPage
+                        }{" "}
+                        of{" "}
+                        {
+                          totalQuestionPages
+                        }
                       </span>
 
                       <button
                         onClick={() =>
-                          setQuestionPage((p) =>
-                            Math.min(
-                              totalQuestionPages,
-                              p + 1
-                            )
+                          setQuestionPage(
+                            (p) =>
+                              Math.min(
+                                totalQuestionPages,
+                                p + 1
+                              )
                           )
                         }
                         disabled={
-                          questionPage === totalQuestionPages
+                          questionPage ===
+                          totalQuestionPages
                         }
                         className="px-4 py-2 rounded-lg bg-gray-200 disabled:opacity-40"
                       >
@@ -1114,7 +1341,8 @@ export default function AdminPage() {
             )}
 
             {/* RESULTS */}
-            {activeTab === "results" && (
+            {activeTab ===
+              "results" && (
               <div className="bg-white rounded-2xl shadow-sm border p-5">
                 <div className="mb-5">
                   <h2 className="text-2xl font-bold">
@@ -1122,89 +1350,106 @@ export default function AdminPage() {
                   </h2>
 
                   <p className="text-sm text-gray-500">
-                    View and manage all mock-test results.
+                    View and manage all
+                    mock-test results.
                   </p>
                 </div>
 
-                {results.length === 0 ? (
+                {results.length ===
+                0 ? (
                   <div className="py-12 text-center text-gray-500">
                     No results yet.
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {results.map((result) => {
-                      const student = students.find(
-                        (item) => item.id === result.student_id
-                      );
+                    {results.map(
+                      (result) => {
+                        const student =
+                          students.find(
+                            (item) =>
+                              item.id ===
+                              result.student_id
+                          );
 
-                      return (
-                        <div
-                          key={result.id}
-                          className="border rounded-xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4"
-                        >
-                          <div>
-                            <div className="font-bold">
-                              {student?.full_name ||
-                                "Unknown Student"}
+                        return (
+                          <div
+                            key={
+                              result.id
+                            }
+                            className="border rounded-xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4"
+                          >
+                            <div>
+                              <div className="font-bold">
+                                {student?.full_name ||
+                                  "Unknown Student"}
+                              </div>
+
+                              <div className="text-sm text-gray-500">
+                                Student ID:{" "}
+                                {student?.student_id ||
+                                  "Unknown"}
+                              </div>
+
+                              <div className="text-sm mt-2">
+                                Score:{" "}
+                                <span className="font-bold">
+                                  {
+                                    result.score
+                                  }{" "}
+                                  / 250
+                                </span>
+                              </div>
+
+                              <div className="text-sm">
+                                Questions:{" "}
+                                {
+                                  result.total_questions
+                                }
+                              </div>
+
+                              <div className="text-xs text-gray-400 mt-1">
+                                {new Date(
+                                  result.created_at
+                                ).toLocaleString()}
+                              </div>
                             </div>
 
-                            <div className="text-sm text-gray-500">
-                              Student ID:{" "}
-                              {student?.student_id ||
-                                "Unknown"}
-                            </div>
-
-                            <div className="text-sm mt-2">
-                              Score:{" "}
-                              <span className="font-bold">
-                                {result.score} / 250
+                            <div className="flex items-center gap-3">
+                              <span
+                                className={`px-3 py-2 rounded-full text-sm font-bold ${
+                                  result.passed
+                                    ? "bg-green-100 text-green-700"
+                                    : "bg-red-100 text-red-700"
+                                }`}
+                              >
+                                {result.passed
+                                  ? "PASSED"
+                                  : "FAILED"}
                               </span>
-                            </div>
 
-                            <div className="text-sm">
-                              Questions:{" "}
-                              {result.total_questions}
-                            </div>
-
-                            <div className="text-xs text-gray-400 mt-1">
-                              {new Date(
-                                result.created_at
-                              ).toLocaleString()}
+                              <button
+                                onClick={() =>
+                                  deleteResult(
+                                    result.id
+                                  )
+                                }
+                                className="bg-red-600 text-white px-3 py-2 rounded-lg"
+                              >
+                                Delete
+                              </button>
                             </div>
                           </div>
-
-                          <div className="flex items-center gap-3">
-                            <span
-                              className={`px-3 py-2 rounded-full text-sm font-bold ${
-                                result.passed
-                                  ? "bg-green-100 text-green-700"
-                                  : "bg-red-100 text-red-700"
-                              }`}
-                            >
-                              {result.passed
-                                ? "PASSED"
-                                : "FAILED"}
-                            </span>
-
-                            <button
-                              onClick={() =>
-                                deleteResult(result.id)
-                              }
-                              className="bg-red-600 text-white px-3 py-2 rounded-lg"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      }
+                    )}
                   </div>
                 )}
               </div>
             )}
 
             {/* STATISTICS */}
-            {activeTab === "statistics" && (
+            {activeTab ===
+              "statistics" && (
               <div>
                 <div className="mb-5">
                   <h2 className="text-2xl font-bold">
@@ -1212,7 +1457,8 @@ export default function AdminPage() {
                   </h2>
 
                   <p className="text-sm text-gray-500">
-                    Overview of your JFT practice system.
+                    Overview of your JFT
+                    practice system.
                   </p>
                 </div>
 
@@ -1221,8 +1467,11 @@ export default function AdminPage() {
                     <div className="text-gray-500 text-sm">
                       Registered Students
                     </div>
+
                     <div className="text-3xl font-bold mt-2">
-                      {students.length}
+                      {
+                        students.length
+                      }
                     </div>
                   </div>
 
@@ -1230,8 +1479,11 @@ export default function AdminPage() {
                     <div className="text-gray-500 text-sm">
                       Total Questions
                     </div>
+
                     <div className="text-3xl font-bold mt-2">
-                      {questions.length}
+                      {
+                        questions.length
+                      }
                     </div>
                   </div>
 
@@ -1239,8 +1491,11 @@ export default function AdminPage() {
                     <div className="text-gray-500 text-sm">
                       Total Results
                     </div>
+
                     <div className="text-3xl font-bold mt-2">
-                      {results.length}
+                      {
+                        results.length
+                      }
                     </div>
                   </div>
 
@@ -1248,8 +1503,10 @@ export default function AdminPage() {
                     <div className="text-gray-500 text-sm">
                       Average Score
                     </div>
+
                     <div className="text-3xl font-bold mt-2">
-                      {averageScore} / 250
+                      {averageScore}{" "}
+                      / 250
                     </div>
                   </div>
                 </div>
@@ -1261,7 +1518,9 @@ export default function AdminPage() {
                     </div>
 
                     <div className="text-3xl font-bold text-green-600 mt-2">
-                      {passedResults}
+                      {
+                        passedResults
+                      }
                     </div>
                   </div>
 
@@ -1271,7 +1530,9 @@ export default function AdminPage() {
                     </div>
 
                     <div className="text-3xl font-bold text-red-600 mt-2">
-                      {failedResults}
+                      {
+                        failedResults
+                      }
                     </div>
                   </div>
                 </div>
@@ -1281,7 +1542,6 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* FOOTER */}
       <footer className="text-center text-gray-400 text-sm py-8">
         JFT Mock Test Admin Panel
         <br />
