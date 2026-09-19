@@ -7,6 +7,7 @@ type Student = {
   id: string;
   full_name: string;
   student_id: string;
+  email?: string | null;
   password?: string;
   blocked: boolean;
   created_at: string;
@@ -64,6 +65,12 @@ export default function AdminPage() {
 
   const [selectedStudent, setSelectedStudent] =
     useState<Student | null>(null);
+
+  const [studentEmail, setStudentEmail] =
+    useState("");
+
+  const [savingEmail, setSavingEmail] =
+    useState(false);
 
   const [editingId, setEditingId] =
     useState<string | null>(null);
@@ -173,6 +180,88 @@ export default function AdminPage() {
     } finally {
       setLoading(false);
       setRefreshing(false);
+    }
+  }
+
+  function openStudent(student: Student) {
+    setSelectedStudent(student);
+    setStudentEmail(student.email || "");
+  }
+
+  async function saveStudentEmail() {
+    if (!selectedStudent) return;
+
+    const email = studentEmail.trim().toLowerCase();
+
+    if (!email) {
+      alert("Please enter an email address.");
+      return;
+    }
+
+    if (!email.includes("@")) {
+      alert("Please enter a valid email address.");
+      return;
+    }
+
+    try {
+      setSavingEmail(true);
+
+      const { data, error } = await supabase
+        .from("students")
+        .update({
+          email: email,
+        })
+        .eq("id", selectedStudent.id)
+        .select("id, email")
+        .single();
+
+      if (error) {
+        if (
+          error.message
+            .toLowerCase()
+            .includes("duplicate")
+        ) {
+          throw new Error(
+            "This email is already registered to another student."
+          );
+        }
+
+        throw error;
+      }
+
+      setStudents((prev) =>
+        prev.map((student) =>
+          student.id === selectedStudent.id
+            ? {
+                ...student,
+                email: data.email,
+              }
+            : student
+        )
+      );
+
+      setSelectedStudent((prev) =>
+        prev
+          ? {
+              ...prev,
+              email: data.email,
+            }
+          : null
+      );
+
+      setStudentEmail(data.email || "");
+
+      alert("Student email updated successfully!");
+    } catch (error) {
+      console.error(error);
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Failed to update student email."
+      );
+    } finally {
+      setSavingEmail(false);
     }
   }
 
@@ -435,6 +524,17 @@ export default function AdminPage() {
         )
       );
 
+      if (selectedStudent?.id === student.id) {
+        setSelectedStudent((prev) =>
+          prev
+            ? {
+                ...prev,
+                blocked: !student.blocked,
+              }
+            : null
+        );
+      }
+
       alert(
         student.blocked
           ? "Student unblocked successfully!"
@@ -552,6 +652,9 @@ export default function AdminPage() {
           .includes(search) ||
         student.student_id
           .toLowerCase()
+          .includes(search) ||
+        (student.email || "")
+          .toLowerCase()
           .includes(search)
     );
   }, [students, studentSearch]);
@@ -591,24 +694,6 @@ export default function AdminPage() {
       questionPage *
         questionsPerPage
     );
-
-  /*
-    ============================================================
-    UNIQUE STUDENT STATISTICS
-    ============================================================
-
-    एउटै student ले धेरै पटक test दिए पनि
-    Students Tested मा एकपटक मात्र count हुन्छ।
-
-    Passed Students:
-    कम्तीमा एकपटक pass गरेका unique students।
-
-    Failed Students:
-    अहिलेसम्म एकपटक पनि pass नगरेका unique students।
-
-    Total Attempts:
-    सबै test attempts को वास्तविक संख्या।
-  */
 
   const uniqueStudentIds = new Set(
     results.map(
@@ -848,7 +933,7 @@ export default function AdminPage() {
                         e.target.value
                       )
                     }
-                    placeholder="Search student name or ID..."
+                    placeholder="Search student name, ID or email..."
                     className="border rounded-lg px-4 py-2 w-full md:w-80 outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -880,6 +965,12 @@ export default function AdminPage() {
                               }
                             </div>
 
+                            <div className="text-sm text-gray-500">
+                              Email:{" "}
+                              {student.email ||
+                                "Not added"}
+                            </div>
+
                             <div className="text-xs text-gray-400 mt-1">
                               Registered:{" "}
                               {new Date(
@@ -903,7 +994,7 @@ export default function AdminPage() {
                           <div className="flex flex-wrap gap-2">
                             <button
                               onClick={() =>
-                                setSelectedStudent(
+                                openStudent(
                                   student
                                 )
                               }
@@ -948,7 +1039,7 @@ export default function AdminPage() {
 
                 {selectedStudent && (
                   <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-2xl p-6 w-full max-w-md">
+                    <div className="bg-white rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
                       <div className="flex justify-between items-center mb-5">
                         <h3 className="text-xl font-bold">
                           Student Details
@@ -966,7 +1057,7 @@ export default function AdminPage() {
                         </button>
                       </div>
 
-                      <div className="space-y-3">
+                      <div className="space-y-4">
                         <div>
                           <span className="font-semibold">
                             Name:
@@ -1002,6 +1093,45 @@ export default function AdminPage() {
                             selectedStudent.created_at
                           ).toLocaleString()}
                         </div>
+
+                        <div className="border-t pt-4">
+                          <label className="block font-semibold mb-2">
+                            Student Email
+                          </label>
+
+                          <input
+                            type="email"
+                            value={
+                              studentEmail
+                            }
+                            onChange={(e) =>
+                              setStudentEmail(
+                                e.target.value
+                              )
+                            }
+                            placeholder="student@example.com"
+                            className="w-full border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+
+                          <p className="text-xs text-gray-500 mt-2">
+                            Add or update this student's
+                            email for future account recovery.
+                          </p>
+
+                          <button
+                            onClick={
+                              saveStudentEmail
+                            }
+                            disabled={
+                              savingEmail
+                            }
+                            className="w-full mt-3 bg-blue-600 text-white py-2 rounded-lg disabled:opacity-50"
+                          >
+                            {savingEmail
+                              ? "Saving..."
+                              : "Save Email"}
+                          </button>
+                        </div>
                       </div>
 
                       <button
@@ -1010,7 +1140,7 @@ export default function AdminPage() {
                             null
                           )
                         }
-                        className="w-full mt-6 bg-blue-600 text-white py-2 rounded-lg"
+                        className="w-full mt-6 bg-gray-200 py-2 rounded-lg"
                       >
                         Close
                       </button>
@@ -1713,7 +1843,6 @@ export default function AdminPage() {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
-                  {/* REGISTERED STUDENTS */}
                   <div className="bg-white rounded-2xl border p-6">
                     <div className="text-gray-500 text-sm">
                       Registered Students
@@ -1726,7 +1855,6 @@ export default function AdminPage() {
                     </div>
                   </div>
 
-                  {/* UNIQUE STUDENTS TESTED */}
                   <div className="bg-white rounded-2xl border p-6">
                     <div className="text-gray-500 text-sm">
                       Students Tested
@@ -1743,7 +1871,6 @@ export default function AdminPage() {
                     </div>
                   </div>
 
-                  {/* TOTAL QUESTIONS */}
                   <div className="bg-white rounded-2xl border p-6">
                     <div className="text-gray-500 text-sm">
                       Total Questions
@@ -1756,7 +1883,6 @@ export default function AdminPage() {
                     </div>
                   </div>
 
-                  {/* TOTAL ATTEMPTS */}
                   <div className="bg-white rounded-2xl border p-6">
                     <div className="text-gray-500 text-sm">
                       Total Attempts
@@ -1773,7 +1899,6 @@ export default function AdminPage() {
                     </div>
                   </div>
 
-                  {/* AVERAGE SCORE */}
                   <div className="bg-white rounded-2xl border p-6">
                     <div className="text-gray-500 text-sm">
                       Average Score
@@ -1790,9 +1915,7 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                {/* UNIQUE PASS / FAIL */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5">
-                  {/* PASSED STUDENTS */}
                   <div className="bg-white rounded-2xl border p-6">
                     <div className="text-gray-500 text-sm">
                       Passed Students
@@ -1809,7 +1932,6 @@ export default function AdminPage() {
                     </div>
                   </div>
 
-                  {/* FAILED STUDENTS */}
                   <div className="bg-white rounded-2xl border p-6">
                     <div className="text-gray-500 text-sm">
                       Failed Students
