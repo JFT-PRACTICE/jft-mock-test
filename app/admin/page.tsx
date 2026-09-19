@@ -40,11 +40,30 @@ type Question = {
   created_at: string;
 };
 
+type MockSettings = {
+  id: number;
+  paid_system_enabled: boolean;
+  free_demo_enabled: boolean;
+  free_demo_questions: number;
+};
+
+type MockPackage = {
+  id: string;
+  package_name: string;
+  price: number;
+  mock_count: number;
+  validity_days: number;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 type Tab =
   | "students"
   | "questions"
   | "results"
-  | "statistics";
+  | "statistics"
+  | "mock-control";
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] =
@@ -54,13 +73,30 @@ export default function AdminPage() {
   const [results, setResults] = useState<Result[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
 
+  const [mockSettings, setMockSettings] =
+    useState<MockSettings | null>(null);
+
+  const [packages, setPackages] =
+    useState<MockPackage[]>([]);
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const [studentSearch, setStudentSearch] = useState("");
-  const [questionSearch, setQuestionSearch] = useState("");
+  const [savingSettings, setSavingSettings] =
+    useState(false);
 
-  const [questionPage, setQuestionPage] = useState(1);
+  const [savingPackage, setSavingPackage] =
+    useState(false);
+
+  const [studentSearch, setStudentSearch] =
+    useState("");
+
+  const [questionSearch, setQuestionSearch] =
+    useState("");
+
+  const [questionPage, setQuestionPage] =
+    useState(1);
+
   const questionsPerPage = 20;
 
   const [selectedStudent, setSelectedStudent] =
@@ -80,6 +116,17 @@ export default function AdminPage() {
 
   const [uploadingImage, setUploadingImage] =
     useState(false);
+
+  const [editingPackageId, setEditingPackageId] =
+    useState<string | null>(null);
+
+  const [packageForm, setPackageForm] = useState({
+    package_name: "",
+    price: "0",
+    mock_count: "1",
+    validity_days: "30",
+    enabled: true,
+  });
 
   const [form, setForm] = useState({
     section: "Script & Vocabulary",
@@ -121,6 +168,8 @@ export default function AdminPage() {
         studentsResponse,
         resultsResponse,
         questionsResponse,
+        settingsResponse,
+        packagesResponse,
       ] = await Promise.all([
         supabase
           .from("students")
@@ -138,6 +187,19 @@ export default function AdminPage() {
 
         supabase
           .from("questions")
+          .select("*")
+          .order("created_at", {
+            ascending: false,
+          }),
+
+        supabase
+          .from("mock_test_settings")
+          .select("*")
+          .eq("id", 1)
+          .maybeSingle(),
+
+        supabase
+          .from("mock_packages")
           .select("*")
           .order("created_at", {
             ascending: false,
@@ -162,9 +224,27 @@ export default function AdminPage() {
         );
       }
 
+      if (settingsResponse.error) {
+        throw new Error(
+          `Mock Settings: ${settingsResponse.error.message}`
+        );
+      }
+
+      if (packagesResponse.error) {
+        throw new Error(
+          `Packages: ${packagesResponse.error.message}`
+        );
+      }
+
       setStudents(studentsResponse.data || []);
       setResults(resultsResponse.data || []);
       setQuestions(questionsResponse.data || []);
+
+      if (settingsResponse.data) {
+        setMockSettings(settingsResponse.data);
+      }
+
+      setPackages(packagesResponse.data || []);
 
       if (!firstLoad) {
         alert("Admin data refreshed successfully!");
@@ -183,37 +263,363 @@ export default function AdminPage() {
     }
   }
 
-  function openStudent(student: Student) {
+  async function updateMockSettings(
+    field:
+      | "paid_system_enabled"
+      | "free_demo_enabled"
+      | "free_demo_questions",
+    value: boolean | number
+  ) {
+    if (!mockSettings) return;
+
+    try {
+      setSavingSettings(true);
+
+      const updated = {
+        ...mockSettings,
+        [field]: value,
+      };
+
+      const { data, error } = await supabase
+        .from("mock_test_settings")
+        .update({
+          [field]: value,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", 1)
+        .select("*")
+        .single();
+
+      if (error) throw error;
+
+      setMockSettings(data);
+
+      if (
+        field === "paid_system_enabled"
+      ) {
+        alert(
+          value
+            ? "Master Paid Mock System is now ON."
+            : "Master Paid Mock System is now OFF."
+        );
+      }
+
+      if (
+        field === "free_demo_enabled"
+      ) {
+        alert(
+          value
+            ? "Free Demo is now ON."
+            : "Free Demo is now OFF."
+        );
+      }
+
+      if (
+        field === "free_demo_questions"
+      ) {
+        alert(
+          `Free Demo question count changed to ${value}.`
+        );
+      }
+
+      return updated;
+    } catch (error) {
+      console.error(error);
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Failed to update mock settings."
+      );
+    } finally {
+      setSavingSettings(false);
+    }
+  }
+
+  function resetPackageForm() {
+    setEditingPackageId(null);
+
+    setPackageForm({
+      package_name: "",
+      price: "0",
+      mock_count: "1",
+      validity_days: "30",
+      enabled: true,
+    });
+  }
+
+  function editPackage(pkg: MockPackage) {
+    setEditingPackageId(pkg.id);
+
+    setPackageForm({
+      package_name: pkg.package_name,
+      price: String(pkg.price),
+      mock_count: String(pkg.mock_count),
+      validity_days: String(pkg.validity_days),
+      enabled: pkg.enabled,
+    });
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  }
+
+  async function savePackage() {
+    const name =
+      packageForm.package_name.trim();
+
+    const price = Number(
+      packageForm.price
+    );
+
+    const mockCount = Number(
+      packageForm.mock_count
+    );
+
+    const validityDays = Number(
+      packageForm.validity_days
+    );
+
+    if (!name) {
+      alert("Please enter package name.");
+      return;
+    }
+
+    if (
+      !Number.isFinite(price) ||
+      price < 0
+    ) {
+      alert("Please enter a valid price.");
+      return;
+    }
+
+    if (
+      !Number.isInteger(mockCount) ||
+      mockCount <= 0
+    ) {
+      alert(
+        "Mock count must be a positive whole number."
+      );
+      return;
+    }
+
+    if (
+      !Number.isInteger(validityDays) ||
+      validityDays <= 0
+    ) {
+      alert(
+        "Validity must be a positive number of days."
+      );
+      return;
+    }
+
+    try {
+      setSavingPackage(true);
+
+      const packageData = {
+        package_name: name,
+        price,
+        mock_count: mockCount,
+        validity_days: validityDays,
+        enabled: packageForm.enabled,
+        updated_at:
+          new Date().toISOString(),
+      };
+
+      if (editingPackageId) {
+        const { data, error } =
+          await supabase
+            .from("mock_packages")
+            .update(packageData)
+            .eq("id", editingPackageId)
+            .select("*")
+            .single();
+
+        if (error) throw error;
+
+        setPackages((prev) =>
+          prev.map((item) =>
+            item.id ===
+            editingPackageId
+              ? data
+              : item
+          )
+        );
+
+        alert(
+          "Package updated successfully!"
+        );
+      } else {
+        const { data, error } =
+          await supabase
+            .from("mock_packages")
+            .insert([
+              {
+                ...packageData,
+                created_at:
+                  new Date().toISOString(),
+              },
+            ])
+            .select("*")
+            .single();
+
+        if (error) throw error;
+
+        setPackages((prev) => [
+          data,
+          ...prev,
+        ]);
+
+        alert(
+          "Package added successfully!"
+        );
+      }
+
+      resetPackageForm();
+    } catch (error) {
+      console.error(error);
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Failed to save package."
+      );
+    } finally {
+      setSavingPackage(false);
+    }
+  }
+
+  async function deletePackage(
+    pkg: MockPackage
+  ) {
+    const ok = confirm(
+      `Delete package "${pkg.package_name}"?`
+    );
+
+    if (!ok) return;
+
+    try {
+      const { error } =
+        await supabase
+          .from("mock_packages")
+          .delete()
+          .eq("id", pkg.id);
+
+      if (error) throw error;
+
+      setPackages((prev) =>
+        prev.filter(
+          (item) => item.id !== pkg.id
+        )
+      );
+
+      if (
+        editingPackageId === pkg.id
+      ) {
+        resetPackageForm();
+      }
+
+      alert(
+        "Package deleted successfully!"
+      );
+    } catch (error) {
+      console.error(error);
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Failed to delete package."
+      );
+    }
+  }
+
+  async function togglePackage(
+    pkg: MockPackage
+  ) {
+    try {
+      const { data, error } =
+        await supabase
+          .from("mock_packages")
+          .update({
+            enabled: !pkg.enabled,
+            updated_at:
+              new Date().toISOString(),
+          })
+          .eq("id", pkg.id)
+          .select("*")
+          .single();
+
+      if (error) throw error;
+
+      setPackages((prev) =>
+        prev.map((item) =>
+          item.id === pkg.id
+            ? data
+            : item
+        )
+      );
+
+      alert(
+        data.enabled
+          ? "Package enabled."
+          : "Package disabled."
+      );
+    } catch (error) {
+      console.error(error);
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Failed to update package."
+      );
+    }
+  }
+
+  function openStudent(
+    student: Student
+  ) {
     setSelectedStudent(student);
-    setStudentEmail(student.email || "");
+    setStudentEmail(
+      student.email || ""
+    );
   }
 
   async function saveStudentEmail() {
     if (!selectedStudent) return;
 
-    const email = studentEmail.trim().toLowerCase();
+    const email =
+      studentEmail.trim().toLowerCase();
 
     if (!email) {
-      alert("Please enter an email address.");
+      alert(
+        "Please enter an email address."
+      );
       return;
     }
 
     if (!email.includes("@")) {
-      alert("Please enter a valid email address.");
+      alert(
+        "Please enter a valid email address."
+      );
       return;
     }
 
     try {
       setSavingEmail(true);
 
-      const { data, error } = await supabase
-        .from("students")
-        .update({
-          email: email,
-        })
-        .eq("id", selectedStudent.id)
-        .select("id, email")
-        .single();
+      const { data, error } =
+        await supabase
+          .from("students")
+          .update({
+            email,
+          })
+          .eq(
+            "id",
+            selectedStudent.id
+          )
+          .select("id, email")
+          .single();
 
       if (error) {
         if (
@@ -231,7 +637,8 @@ export default function AdminPage() {
 
       setStudents((prev) =>
         prev.map((student) =>
-          student.id === selectedStudent.id
+          student.id ===
+          selectedStudent.id
             ? {
                 ...student,
                 email: data.email,
@@ -249,9 +656,13 @@ export default function AdminPage() {
           : null
       );
 
-      setStudentEmail(data.email || "");
+      setStudentEmail(
+        data.email || ""
+      );
 
-      alert("Student email updated successfully!");
+      alert(
+        "Student email updated successfully!"
+      );
     } catch (error) {
       console.error(error);
 
@@ -284,16 +695,22 @@ export default function AdminPage() {
     });
   }
 
-  async function uploadQuestionImage(file: File) {
+  async function uploadQuestionImage(
+    file: File
+  ) {
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      alert("Please select an image file.");
+      alert(
+        "Please select an image file."
+      );
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      alert("Image must be smaller than 5 MB.");
+      alert(
+        "Image must be smaller than 5 MB."
+      );
       return;
     }
 
@@ -301,28 +718,40 @@ export default function AdminPage() {
       setUploadingImage(true);
 
       const fileExt =
-        file.name.split(".").pop()?.toLowerCase() ||
+        file.name
+          .split(".")
+          .pop()
+          ?.toLowerCase() ||
         "jpg";
 
       const fileName = `${crypto.randomUUID()}.${fileExt}`;
 
-      const filePath = `questions/${fileName}`;
+      const filePath =
+        `questions/${fileName}`;
 
       const { error: uploadError } =
         await supabase.storage
           .from("question-images")
-          .upload(filePath, file, {
-            upsert: false,
-          });
+          .upload(
+            filePath,
+            file,
+            {
+              upsert: false,
+            }
+          );
 
       if (uploadError) {
         throw uploadError;
       }
 
-      const { data: publicUrlData } =
+      const {
+        data: publicUrlData,
+      } =
         supabase.storage
           .from("question-images")
-          .getPublicUrl(filePath);
+          .getPublicUrl(
+            filePath
+          );
 
       const imageUrl =
         publicUrlData.publicUrl;
@@ -332,7 +761,9 @@ export default function AdminPage() {
         image_url: imageUrl,
       }));
 
-      alert("Question image uploaded successfully!");
+      alert(
+        "Question image uploaded successfully!"
+      );
     } catch (error) {
       console.error(error);
 
@@ -387,30 +818,40 @@ export default function AdminPage() {
         option_b: form.option_b,
         option_c: form.option_c,
         option_d: form.option_d,
-        correct_answer: form.correct_answer,
+        correct_answer:
+          form.correct_answer,
         difficulty: form.difficulty,
         nepali: form.nepali,
         audio_url: form.audio_url,
-        image_url: form.image_url || null,
+        image_url:
+          form.image_url || null,
       };
 
       if (editingId) {
-        const { error } = await supabase
-          .from("questions")
-          .update(questionData)
-          .eq("id", editingId);
+        const { error } =
+          await supabase
+            .from("questions")
+            .update(questionData)
+            .eq("id", editingId);
 
         if (error) throw error;
 
-        alert("Question updated successfully!");
+        alert(
+          "Question updated successfully!"
+        );
       } else {
-        const { error } = await supabase
-          .from("questions")
-          .insert([questionData]);
+        const { error } =
+          await supabase
+            .from("questions")
+            .insert([
+              questionData,
+            ]);
 
         if (error) throw error;
 
-        alert("Question added successfully!");
+        alert(
+          "Question added successfully!"
+        );
       }
 
       resetQuestionForm();
@@ -430,7 +871,9 @@ export default function AdminPage() {
     }
   }
 
-  function editQuestion(question: Question) {
+  function editQuestion(
+    question: Question
+  ) {
     setEditingId(question.id);
 
     setForm({
@@ -469,7 +912,9 @@ export default function AdminPage() {
     });
   }
 
-  async function deleteQuestion(id: string) {
+  async function deleteQuestion(
+    id: string
+  ) {
     const ok = confirm(
       "Are you sure you want to delete this question?"
     );
@@ -477,18 +922,23 @@ export default function AdminPage() {
     if (!ok) return;
 
     try {
-      const { error } = await supabase
-        .from("questions")
-        .delete()
-        .eq("id", id);
+      const { error } =
+        await supabase
+          .from("questions")
+          .delete()
+          .eq("id", id);
 
       if (error) throw error;
 
       setQuestions((prev) =>
-        prev.filter((q) => q.id !== id)
+        prev.filter(
+          (q) => q.id !== id
+        )
       );
 
-      alert("Question deleted successfully!");
+      alert(
+        "Question deleted successfully!"
+      );
     } catch (error) {
       console.error(error);
 
@@ -504,12 +954,17 @@ export default function AdminPage() {
     student: Student
   ) {
     try {
-      const { error } = await supabase
-        .from("students")
-        .update({
-          blocked: !student.blocked,
-        })
-        .eq("id", student.id);
+      const { error } =
+        await supabase
+          .from("students")
+          .update({
+            blocked:
+              !student.blocked,
+          })
+          .eq(
+            "id",
+            student.id
+          );
 
       if (error) throw error;
 
@@ -518,20 +973,26 @@ export default function AdminPage() {
           item.id === student.id
             ? {
                 ...item,
-                blocked: !student.blocked,
+                blocked:
+                  !student.blocked,
               }
             : item
         )
       );
 
-      if (selectedStudent?.id === student.id) {
-        setSelectedStudent((prev) =>
-          prev
-            ? {
-                ...prev,
-                blocked: !student.blocked,
-              }
-            : null
+      if (
+        selectedStudent?.id ===
+        student.id
+      ) {
+        setSelectedStudent(
+          (prev) =>
+            prev
+              ? {
+                  ...prev,
+                  blocked:
+                    !student.blocked,
+                }
+              : null
         );
       }
 
@@ -551,7 +1012,9 @@ export default function AdminPage() {
     }
   }
 
-  async function deleteStudent(student: Student) {
+  async function deleteStudent(
+    student: Student
+  ) {
     const ok = confirm(
       `Delete student "${student.full_name}" (${student.student_id})?`
     );
@@ -559,22 +1022,29 @@ export default function AdminPage() {
     if (!ok) return;
 
     try {
-      const { error } = await supabase
-        .from("students")
-        .delete()
-        .eq("id", student.id);
+      const { error } =
+        await supabase
+          .from("students")
+          .delete()
+          .eq(
+            "id",
+            student.id
+          );
 
       if (error) throw error;
 
       setStudents((prev) =>
         prev.filter(
-          (item) => item.id !== student.id
+          (item) =>
+            item.id !== student.id
         )
       );
 
       setSelectedStudent(null);
 
-      alert("Student deleted successfully!");
+      alert(
+        "Student deleted successfully!"
+      );
     } catch (error) {
       console.error(error);
 
@@ -586,7 +1056,9 @@ export default function AdminPage() {
     }
   }
 
-  async function deleteResult(id: string) {
+  async function deleteResult(
+    id: string
+  ) {
     const ok = confirm(
       "Delete this result?"
     );
@@ -594,16 +1066,21 @@ export default function AdminPage() {
     if (!ok) return;
 
     try {
-      const { data: deletedRows, error } =
-        await supabase
-          .from("results")
-          .delete()
-          .eq("id", id)
-          .select("id");
+      const {
+        data: deletedRows,
+        error,
+      } = await supabase
+        .from("results")
+        .delete()
+        .eq("id", id)
+        .select("id");
 
       if (error) throw error;
 
-      if (!deletedRows || deletedRows.length === 0) {
+      if (
+        !deletedRows ||
+        deletedRows.length === 0
+      ) {
         throw new Error(
           "Result was not deleted from database. Please check Supabase DELETE policy."
         );
@@ -611,11 +1088,14 @@ export default function AdminPage() {
 
       setResults((prev) =>
         prev.filter(
-          (result) => result.id !== id
+          (result) =>
+            result.id !== id
         )
       );
 
-      alert("Result deleted successfully!");
+      alert(
+        "Result deleted successfully!"
+      );
     } catch (error) {
       console.error(error);
 
@@ -636,56 +1116,75 @@ export default function AdminPage() {
       "jft_admin_username"
     );
 
-    window.location.href = "/admin/login";
+    window.location.href =
+      "/admin/login";
   }
 
-  const filteredStudents = useMemo(() => {
-    const search =
-      studentSearch.toLowerCase().trim();
+  const filteredStudents =
+    useMemo(() => {
+      const search =
+        studentSearch
+          .toLowerCase()
+          .trim();
 
-    if (!search) return students;
+      if (!search) return students;
 
-    return students.filter(
-      (student) =>
-        student.full_name
+      return students.filter(
+        (student) =>
+          student.full_name
+            .toLowerCase()
+            .includes(search) ||
+          student.student_id
+            .toLowerCase()
+            .includes(search) ||
+          (
+            student.email || ""
+          )
+            .toLowerCase()
+            .includes(search)
+      );
+    }, [
+      students,
+      studentSearch,
+    ]);
+
+  const filteredQuestions =
+    useMemo(() => {
+      const search =
+        questionSearch
           .toLowerCase()
-          .includes(search) ||
-        student.student_id
-          .toLowerCase()
-          .includes(search) ||
-        (student.email || "")
-          .toLowerCase()
-          .includes(search)
+          .trim();
+
+      if (!search) return questions;
+
+      return questions.filter(
+        (question) =>
+          question.question
+            .toLowerCase()
+            .includes(search) ||
+          question.section
+            .toLowerCase()
+            .includes(search) ||
+          (
+            question.category ||
+            ""
+          )
+            .toLowerCase()
+            .includes(search)
+      );
+    }, [
+      questions,
+      questionSearch,
+    ]);
+
+  const totalQuestionPages =
+    Math.max(
+      1,
+      Math.ceil(
+        filteredQuestions.length /
+          questionsPerPage
+      )
     );
-  }, [students, studentSearch]);
-
-  const filteredQuestions = useMemo(() => {
-    const search =
-      questionSearch.toLowerCase().trim();
-
-    if (!search) return questions;
-
-    return questions.filter(
-      (question) =>
-        question.question
-          .toLowerCase()
-          .includes(search) ||
-        question.section
-          .toLowerCase()
-          .includes(search) ||
-        (question.category || "")
-          .toLowerCase()
-          .includes(search)
-    );
-  }, [questions, questionSearch]);
-
-  const totalQuestionPages = Math.max(
-    1,
-    Math.ceil(
-      filteredQuestions.length /
-        questionsPerPage
-    )
-  );
 
   const visibleQuestions =
     filteredQuestions.slice(
@@ -695,40 +1194,47 @@ export default function AdminPage() {
         questionsPerPage
     );
 
-  const uniqueStudentIds = new Set(
-    results.map(
-      (result) => result.student_id
-    )
-  );
+  const uniqueStudentIds =
+    new Set(
+      results.map(
+        (result) =>
+          result.student_id
+      )
+    );
 
   const totalStudentsTested =
     uniqueStudentIds.size;
 
-  const passedStudentIds = new Set(
-    results
-      .filter(
-        (result) => result.passed
-      )
-      .map(
-        (result) => result.student_id
-      )
-  );
+  const passedStudentIds =
+    new Set(
+      results
+        .filter(
+          (result) =>
+            result.passed
+        )
+        .map(
+          (result) =>
+            result.student_id
+        )
+    );
 
   const passedStudents =
     passedStudentIds.size;
 
-  const failedStudents = new Set(
-    results
-      .filter(
-        (result) =>
-          !passedStudentIds.has(
+  const failedStudents =
+    new Set(
+      results
+        .filter(
+          (result) =>
+            !passedStudentIds.has(
+              result.student_id
+            )
+        )
+        .map(
+          (result) =>
             result.student_id
-          )
-      )
-      .map(
-        (result) => result.student_id
-      )
-  ).size;
+        )
+    ).size;
 
   const totalAttempts =
     results.length;
@@ -737,15 +1243,24 @@ export default function AdminPage() {
     results.length > 0
       ? (
           results.reduce(
-            (sum, result) =>
+            (
+              sum,
+              result
+            ) =>
               sum +
               Number(
                 result.score || 0
               ),
             0
-          ) / results.length
+          ) /
+          results.length
         ).toFixed(1)
       : "0";
+
+  const enabledPackages =
+    packages.filter(
+      (pkg) => pkg.enabled
+    ).length;
 
   useEffect(() => {
     setQuestionPage(1);
@@ -837,8 +1352,8 @@ export default function AdminPage() {
             </h1>
 
             <p className="text-sm text-gray-500">
-              Manage students, questions and
-              results
+              Manage students, questions,
+              results and mock system
             </p>
           </div>
 
@@ -900,6 +1415,13 @@ export default function AdminPage() {
                   "statistics",
                   "📊",
                   "Statistics"
+                )}
+
+                {menuButton(
+                  "mock-control",
+                  "⚙️",
+                  "Mock Test Control",
+                  packages.length
                 )}
               </div>
             </div>
@@ -1474,7 +1996,6 @@ export default function AdminPage() {
                   </button>
                 </div>
 
-                {/* QUESTION BANK */}
                 <div className="bg-white rounded-2xl shadow-sm border p-5">
                   <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-5">
                     <div>
@@ -1945,6 +2466,537 @@ export default function AdminPage() {
 
                     <div className="text-xs text-gray-400 mt-1">
                       Unique students who have never passed
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* MOCK TEST CONTROL */}
+            {activeTab ===
+              "mock-control" && (
+              <div className="space-y-5">
+                {/* MASTER CONTROL */}
+                <div className="bg-white rounded-2xl shadow-sm border p-5">
+                  <div className="mb-5">
+                    <h2 className="text-2xl font-bold">
+                      Mock Test Control
+                    </h2>
+
+                    <p className="text-sm text-gray-500">
+                      Control the paid mock system and
+                      free demo from one place.
+                    </p>
+                  </div>
+
+                  {mockSettings && (
+                    <div className="space-y-4">
+                      {/* PAID MASTER */}
+                      <div className="border rounded-2xl p-5">
+                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                          <div>
+                            <div className="text-lg font-bold">
+                              Master Paid Mock System
+                            </div>
+
+                            <p className="text-sm text-gray-500 mt-1">
+                              OFF = student dashboard keeps
+                              the current normal mock system.
+                              ON = paid mock/package area can
+                              be shown to students.
+                            </p>
+
+                            <div
+                              className={`inline-block mt-3 px-3 py-1 rounded-full text-sm font-bold ${
+                                mockSettings.paid_system_enabled
+                                  ? "bg-green-100 text-green-700"
+                                  : "bg-gray-100 text-gray-600"
+                              }`}
+                            >
+                              {mockSettings.paid_system_enabled
+                                ? "SYSTEM ON"
+                                : "SYSTEM OFF"}
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() =>
+                              updateMockSettings(
+                                "paid_system_enabled",
+                                !mockSettings.paid_system_enabled
+                              )
+                            }
+                            disabled={
+                              savingSettings
+                            }
+                            className={`min-w-32 px-5 py-3 rounded-xl text-white font-bold disabled:opacity-50 ${
+                              mockSettings.paid_system_enabled
+                                ? "bg-red-600"
+                                : "bg-green-600"
+                            }`}
+                          >
+                            {savingSettings
+                              ? "Saving..."
+                              : mockSettings.paid_system_enabled
+                              ? "TURN OFF"
+                              : "TURN ON"}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* FREE DEMO */}
+                      <div className="border rounded-2xl p-5">
+                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                          <div>
+                            <div className="text-lg font-bold">
+                              Free Demo Mock
+                            </div>
+
+                            <p className="text-sm text-gray-500 mt-1">
+                              Free demo uses a fixed question
+                              count and can be attempted
+                              repeatedly.
+                            </p>
+
+                            <div
+                              className={`inline-block mt-3 px-3 py-1 rounded-full text-sm font-bold ${
+                                mockSettings.free_demo_enabled
+                                  ? "bg-green-100 text-green-700"
+                                  : "bg-gray-100 text-gray-600"
+                              }`}
+                            >
+                              {mockSettings.free_demo_enabled
+                                ? "DEMO ON"
+                                : "DEMO OFF"}
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() =>
+                              updateMockSettings(
+                                "free_demo_enabled",
+                                !mockSettings.free_demo_enabled
+                              )
+                            }
+                            disabled={
+                              savingSettings
+                            }
+                            className={`min-w-32 px-5 py-3 rounded-xl text-white font-bold disabled:opacity-50 ${
+                              mockSettings.free_demo_enabled
+                                ? "bg-red-600"
+                                : "bg-green-600"
+                            }`}
+                          >
+                            {savingSettings
+                              ? "Saving..."
+                              : mockSettings.free_demo_enabled
+                              ? "TURN OFF"
+                              : "TURN ON"}
+                          </button>
+                        </div>
+
+                        <div className="mt-5 border-t pt-5">
+                          <label className="block font-semibold mb-2">
+                            Free Demo Questions
+                          </label>
+
+                          <div className="flex flex-col sm:flex-row gap-3">
+                            <input
+                              type="number"
+                              min="1"
+                              value={
+                                mockSettings.free_demo_questions
+                              }
+                              onChange={(e) =>
+                                setMockSettings(
+                                  (prev) =>
+                                    prev
+                                      ? {
+                                          ...prev,
+                                          free_demo_questions:
+                                            Number(
+                                              e.target.value
+                                            ),
+                                        }
+                                      : prev
+                                )
+                              }
+                              className="border rounded-lg px-4 py-2 w-full sm:w-40"
+                            />
+
+                            <button
+                              onClick={() =>
+                                updateMockSettings(
+                                  "free_demo_questions",
+                                  Math.max(
+                                    1,
+                                    Number(
+                                      mockSettings.free_demo_questions
+                                    )
+                                  )
+                                )
+                              }
+                              disabled={
+                                savingSettings
+                              }
+                              className="bg-blue-600 text-white px-5 py-2 rounded-lg disabled:opacity-50"
+                            >
+                              Save Question Count
+                            </button>
+                          </div>
+
+                          <p className="text-xs text-gray-500 mt-2">
+                            Default is 20.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* PACKAGE FORM */}
+                <div className="bg-white rounded-2xl shadow-sm border p-5">
+                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-5">
+                    <div>
+                      <h2 className="text-2xl font-bold">
+                        {editingPackageId
+                          ? "Edit Package"
+                          : "Add Package"}
+                      </h2>
+
+                      <p className="text-sm text-gray-500">
+                        Set package name, price, mock
+                        count and validity.
+                      </p>
+                    </div>
+
+                    {editingPackageId && (
+                      <button
+                        onClick={
+                          resetPackageForm
+                        }
+                        className="bg-gray-200 px-4 py-2 rounded-lg"
+                      >
+                        Cancel Edit
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <input
+                      value={
+                        packageForm.package_name
+                      }
+                      onChange={(e) =>
+                        setPackageForm({
+                          ...packageForm,
+                          package_name:
+                            e.target.value,
+                        })
+                      }
+                      placeholder="Package name"
+                      className="border rounded-lg px-4 py-2"
+                    />
+
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={
+                        packageForm.price
+                      }
+                      onChange={(e) =>
+                        setPackageForm({
+                          ...packageForm,
+                          price:
+                            e.target.value,
+                        })
+                      }
+                      placeholder="Price"
+                      className="border rounded-lg px-4 py-2"
+                    />
+
+                    <input
+                      type="number"
+                      min="1"
+                      value={
+                        packageForm.mock_count
+                      }
+                      onChange={(e) =>
+                        setPackageForm({
+                          ...packageForm,
+                          mock_count:
+                            e.target.value,
+                        })
+                      }
+                      placeholder="Number of mock tests"
+                      className="border rounded-lg px-4 py-2"
+                    />
+
+                    <input
+                      type="number"
+                      min="1"
+                      value={
+                        packageForm.validity_days
+                      }
+                      onChange={(e) =>
+                        setPackageForm({
+                          ...packageForm,
+                          validity_days:
+                            e.target.value,
+                        })
+                      }
+                      placeholder="Validity in days"
+                      className="border rounded-lg px-4 py-2"
+                    />
+                  </div>
+
+                  <label className="flex items-center gap-3 mt-4 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={
+                        packageForm.enabled
+                      }
+                      onChange={(e) =>
+                        setPackageForm({
+                          ...packageForm,
+                          enabled:
+                            e.target.checked,
+                        })
+                      }
+                      className="w-5 h-5"
+                    />
+
+                    <span className="font-semibold">
+                      Package enabled
+                    </span>
+                  </label>
+
+                  <button
+                    onClick={
+                      savePackage
+                    }
+                    disabled={
+                      savingPackage
+                    }
+                    className="mt-5 bg-blue-600 text-white px-5 py-3 rounded-lg disabled:opacity-50"
+                  >
+                    {savingPackage
+                      ? "Saving..."
+                      : editingPackageId
+                      ? "Update Package"
+                      : "Add Package"}
+                  </button>
+                </div>
+
+                {/* PACKAGE LIST */}
+                <div className="bg-white rounded-2xl shadow-sm border p-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
+                    <div>
+                      <h2 className="text-2xl font-bold">
+                        Packages
+                      </h2>
+
+                      <p className="text-sm text-gray-500">
+                        Enabled packages:
+                        {" "}
+                        <span className="font-bold">
+                          {enabledPackages}
+                        </span>
+                      </p>
+                    </div>
+
+                    <div className="bg-blue-50 text-blue-700 px-4 py-2 rounded-lg text-sm">
+                      Payment gateway:
+                      <span className="font-bold ml-1">
+                        Ready for later
+                      </span>
+                    </div>
+                  </div>
+
+                  {packages.length ===
+                  0 ? (
+                    <div className="py-10 text-center text-gray-500">
+                      No packages created yet.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {packages.map(
+                        (pkg) => (
+                          <div
+                            key={
+                              pkg.id
+                            }
+                            className="border rounded-xl p-4"
+                          >
+                            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                              <div>
+                                <div className="font-bold text-lg">
+                                  {
+                                    pkg.package_name
+                                  }
+                                </div>
+
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
+                                  <div className="bg-gray-50 rounded-lg p-3">
+                                    <div className="text-xs text-gray-500">
+                                      Price
+                                    </div>
+
+                                    <div className="font-bold">
+                                      Rs.{" "}
+                                      {
+                                        pkg.price
+                                      }
+                                    </div>
+                                  </div>
+
+                                  <div className="bg-gray-50 rounded-lg p-3">
+                                    <div className="text-xs text-gray-500">
+                                      Mock Tests
+                                    </div>
+
+                                    <div className="font-bold">
+                                      {
+                                        pkg.mock_count
+                                      }
+                                    </div>
+                                  </div>
+
+                                  <div className="bg-gray-50 rounded-lg p-3">
+                                    <div className="text-xs text-gray-500">
+                                      Validity
+                                    </div>
+
+                                    <div className="font-bold">
+                                      {
+                                        pkg.validity_days
+                                      }{" "}
+                                      days
+                                    </div>
+                                  </div>
+
+                                  <div className="bg-gray-50 rounded-lg p-3">
+                                    <div className="text-xs text-gray-500">
+                                      Status
+                                    </div>
+
+                                    <div
+                                      className={`font-bold ${
+                                        pkg.enabled
+                                          ? "text-green-600"
+                                          : "text-red-600"
+                                      }`}
+                                    >
+                                      {pkg.enabled
+                                        ? "Enabled"
+                                        : "Disabled"}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  onClick={() =>
+                                    togglePackage(
+                                      pkg
+                                    )
+                                  }
+                                  className={`px-3 py-2 rounded-lg text-white ${
+                                    pkg.enabled
+                                      ? "bg-orange-500"
+                                      : "bg-green-600"
+                                  }`}
+                                >
+                                  {pkg.enabled
+                                    ? "Disable"
+                                    : "Enable"}
+                                </button>
+
+                                <button
+                                  onClick={() =>
+                                    editPackage(
+                                      pkg
+                                    )
+                                  }
+                                  className="bg-yellow-500 text-white px-3 py-2 rounded-lg"
+                                >
+                                  Edit
+                                </button>
+
+                                <button
+                                  onClick={() =>
+                                    deletePackage(
+                                      pkg
+                                    )
+                                  }
+                                  className="bg-red-600 text-white px-3 py-2 rounded-lg"
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* SYSTEM STATUS */}
+                <div className="bg-white rounded-2xl shadow-sm border p-5">
+                  <h2 className="text-xl font-bold mb-4">
+                    Current System Status
+                  </h2>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="border rounded-xl p-4">
+                      <div className="text-sm text-gray-500">
+                        Master Paid System
+                      </div>
+
+                      <div
+                        className={`text-xl font-bold mt-1 ${
+                          mockSettings?.paid_system_enabled
+                            ? "text-green-600"
+                            : "text-red-600"
+                        }`}
+                      >
+                        {mockSettings?.paid_system_enabled
+                          ? "ON"
+                          : "OFF"}
+                      </div>
+                    </div>
+
+                    <div className="border rounded-xl p-4">
+                      <div className="text-sm text-gray-500">
+                        Free Demo
+                      </div>
+
+                      <div
+                        className={`text-xl font-bold mt-1 ${
+                          mockSettings?.free_demo_enabled
+                            ? "text-green-600"
+                            : "text-red-600"
+                        }`}
+                      >
+                        {mockSettings?.free_demo_enabled
+                          ? "ON"
+                          : "OFF"}
+                      </div>
+                    </div>
+
+                    <div className="border rounded-xl p-4">
+                      <div className="text-sm text-gray-500">
+                        Active Packages
+                      </div>
+
+                      <div className="text-xl font-bold mt-1">
+                        {
+                          enabledPackages
+                        }
+                      </div>
                     </div>
                   </div>
                 </div>
