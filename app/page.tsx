@@ -1,1 +1,249 @@
-"use client"; import { useEffect, useState } from "react"; export default function Home() { const [student, setStudent] = useState<{ fullName?: string; studentId?: string; } | null>(null); useEffect(() => { const saved = localStorage.getItem("loggedInStudent"); if (saved) { try { setStudent(JSON.parse(saved)); } catch { setStudent(null); } } }, []); return ( <main className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50"> {/* Header */} <header className="border-b bg-white/90 backdrop-blur"> <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4"> <div> <h1 className="text-xl font-bold text-blue-700"> JFT Mock Test </h1> <p className="text-xs text-gray-500"> Japanese Foundation Test Practice </p> </div> <div className="flex gap-2"> {student ? ( <a href="/dashboard" className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700" > Dashboard </a> ) : ( <> <a href="/login" className="rounded-lg border border-blue-600 px-4 py-2 text-sm font-semibold text-blue-600 hover:bg-blue-50" > Student Login </a> <a href="/register" className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700" > Register </a> </> )} </div> </div> </header> {/* Hero */} <section className="mx-auto max-w-6xl px-5 py-16 text-center"> <div className="mx-auto max-w-3xl"> <span className="inline-block rounded-full bg-blue-100 px-4 py-2 text-sm font-semibold text-blue-700"> JFT-Basic Practice </span> <h2 className="mt-6 text-4xl font-extrabold tracking-tight text-gray-900 sm:text-5xl"> Practice Japanese with <span className="block text-blue-600"> JFT Mock Tests </span> </h2> <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-gray-600"> Practice Script & Vocabulary, Conversation & Expression, Listening Comprehension and Reading Comprehension in one place. </p> <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row"> {student ? ( <a href="/mock-test" className="rounded-xl bg-blue-600 px-7 py-3.5 font-bold text-white shadow-lg hover:bg-blue-700" > Start Mock Test </a> ) : ( <> <a href="/register" className="rounded-xl bg-blue-600 px-7 py-3.5 font-bold text-white shadow-lg hover:bg-blue-700" > Create Student Account </a> <a href="/login" className="rounded-xl border border-gray-300 bg-white px-7 py-3.5 font-bold text-gray-700 shadow-sm hover:bg-gray-50" > Student Login </a> </> )} </div> </div> </section> {/* Sections */} <section className="mx-auto max-w-6xl px-5 pb-16"> <h3 className="text-center text-2xl font-bold text-gray-900"> Test Sections </h3> <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-4"> <div className="rounded-2xl bg-white p-6 shadow-md"> <div className="text-3xl">📚</div> <h4 className="mt-4 font-bold text-gray-900"> Script and Vocabulary </h4> <p className="mt-2 text-sm text-gray-600"> Practice Japanese words, scripts and vocabulary. </p> </div> <div className="rounded-2xl bg-white p-6 shadow-md"> <div className="text-3xl">💬</div> <h4 className="mt-4 font-bold text-gray-900"> Conversation and Expression </h4> <p className="mt-2 text-sm text-gray-600"> Practice everyday Japanese conversations and expressions. </p> </div> <div className="rounded-2xl bg-white p-6 shadow-md"> <div className="text-3xl">🎧</div> <h4 className="mt-4 font-bold text-gray-900"> Listening Comprehension </h4> <p className="mt-2 text-sm text-gray-600"> Practice listening questions with Japanese audio. </p> </div> <div className="rounded-2xl bg-white p-6 shadow-md"> <div className="text-3xl">📖</div> <h4 className="mt-4 font-bold text-gray-900"> Reading Comprehension </h4> <p className="mt-2 text-sm text-gray-600"> Practice Japanese reading and comprehension. </p> </div> </div> </section> {/* Features */} <section className="bg-white"> <div className="mx-auto max-w-6xl px-5 py-16"> <h3 className="text-center text-2xl font-bold text-gray-900"> Practice Features </h3> <div className="mx-auto mt-8 grid max-w-4xl gap-4 sm:grid-cols-2"> <div className="rounded-xl border p-5"> <p className="font-semibold">⏱️ 60 Minute Mock Test</p> <p className="mt-1 text-sm text-gray-600"> Practice with a timed mock-test experience. </p> </div> <div className="rounded-xl border p-5"> <p className="font-semibold">📝 45–52 Questions</p> <p className="mt-1 text-sm text-gray-600"> Questions are selected from the practice question bank. </p> </div> <div className="rounded-xl border p-5"> <p className="font-semibold">📊 Result History</p> <p className="mt-1 text-sm text-gray-600"> Check your previous mock-test results from your dashboard. </p> </div> <div className="rounded-xl border p-5"> <p className="font-semibold">📱 Mobile + Computer</p> <p className="mt-1 text-sm text-gray-600"> Responsive interface for phones, tablets and computers. </p> </div> </div> </div> </section> {/* Footer */} <footer className="border-t bg-gray-50"> <div className="mx-auto max-w-6xl px-5 py-6 text-center"> <p className="font-semibold text-gray-700"> Made by Anish Bhattarai </p> <p className="mt-1 text-sm text-gray-500"> JFT Mock Test Practice Platform </p> <a href="/admin/login" className="mt-4 inline-block text-xs text-gray-400 hover:text-gray-600" > Admin Login </a> </div> </footer> </main> ); }
+"use client";
+
+import { useEffect, useState } from "react";
+
+type Student = {
+  full_name?: string;
+  student_id?: string;
+};
+
+export default function Home() {
+  const [student, setStudent] = useState<Student | null>(null);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("loggedInStudent");
+
+    if (saved) {
+      try {
+        setStudent(JSON.parse(saved));
+      } catch {
+        setStudent(null);
+      }
+    }
+  }, []);
+
+  function logout() {
+    localStorage.removeItem("loggedInStudent");
+    setStudent(null);
+    window.location.href = "/";
+  }
+
+  return (
+    <main className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
+      {/* Header */}
+      <header className="border-b bg-white/90 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4">
+          <div>
+            <h1 className="text-xl font-bold text-blue-700">
+              JFT Mock Test
+            </h1>
+
+            <p className="text-xs text-gray-500">
+              Japanese Foundation Test Practice
+            </p>
+          </div>
+
+          <div className="flex gap-2">
+            {student ? (
+              <>
+                <a
+                  href="/dashboard"
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                >
+                  Student Dashboard
+                </a>
+
+                <button
+                  onClick={logout}
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Logout
+                </button>
+              </>
+            ) : (
+              <>
+                <a
+                  href="/login"
+                  className="rounded-lg border border-blue-600 px-4 py-2 text-sm font-semibold text-blue-600 hover:bg-blue-50"
+                >
+                  Student Login
+                </a>
+
+                <a
+                  href="/register"
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                >
+                  Register
+                </a>
+              </>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* Hero */}
+      <section className="mx-auto max-w-6xl px-5 py-16 text-center">
+        <div className="mx-auto max-w-3xl">
+          <span className="inline-block rounded-full bg-blue-100 px-4 py-2 text-sm font-semibold text-blue-700">
+            JFT-Basic Practice
+          </span>
+
+          <h2 className="mt-6 text-4xl font-extrabold tracking-tight text-gray-900 sm:text-5xl">
+            Practice Japanese with
+            <span className="block text-blue-600">
+              JFT Mock Tests
+            </span>
+          </h2>
+
+          <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-gray-600">
+            Practice Script & Vocabulary, Conversation & Expression,
+            Listening Comprehension and Reading Comprehension in one place.
+          </p>
+
+          <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+            {student ? (
+              <a
+                href="/dashboard"
+                className="rounded-xl bg-blue-600 px-7 py-3.5 font-bold text-white shadow-lg hover:bg-blue-700"
+              >
+                Go to Student Dashboard
+              </a>
+            ) : (
+              <>
+                <a
+                  href="/login"
+                  className="rounded-xl bg-blue-600 px-7 py-3.5 font-bold text-white shadow-lg hover:bg-blue-700"
+                >
+                  Student Login
+                </a>
+
+                <a
+                  href="/register"
+                  className="rounded-xl border border-gray-300 bg-white px-7 py-3.5 font-bold text-gray-700 shadow-sm hover:bg-gray-50"
+                >
+                  Create Student Account
+                </a>
+              </>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* Sections */}
+      <section className="mx-auto max-w-6xl px-5 pb-16">
+        <h3 className="text-center text-2xl font-bold text-gray-900">
+          Test Sections
+        </h3>
+
+        <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-2xl bg-white p-6 shadow-md">
+            <div className="text-3xl">📚</div>
+            <h4 className="mt-4 font-bold text-gray-900">
+              Script and Vocabulary
+            </h4>
+            <p className="mt-2 text-sm text-gray-600">
+              Practice Japanese words, scripts and vocabulary.
+            </p>
+          </div>
+
+          <div className="rounded-2xl bg-white p-6 shadow-md">
+            <div className="text-3xl">💬</div>
+            <h4 className="mt-4 font-bold text-gray-900">
+              Conversation and Expression
+            </h4>
+            <p className="mt-2 text-sm text-gray-600">
+              Practice everyday Japanese conversations and expressions.
+            </p>
+          </div>
+
+          <div className="rounded-2xl bg-white p-6 shadow-md">
+            <div className="text-3xl">🎧</div>
+            <h4 className="mt-4 font-bold text-gray-900">
+              Listening Comprehension
+            </h4>
+            <p className="mt-2 text-sm text-gray-600">
+              Practice listening questions with Japanese audio.
+            </p>
+          </div>
+
+          <div className="rounded-2xl bg-white p-6 shadow-md">
+            <div className="text-3xl">📖</div>
+            <h4 className="mt-4 font-bold text-gray-900">
+              Reading Comprehension
+            </h4>
+            <p className="mt-2 text-sm text-gray-600">
+              Practice Japanese reading and comprehension.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Features */}
+      <section className="bg-white">
+        <div className="mx-auto max-w-6xl px-5 py-16">
+          <h3 className="text-center text-2xl font-bold text-gray-900">
+            Practice Features
+          </h3>
+
+          <div className="mx-auto mt-8 grid max-w-4xl gap-4 sm:grid-cols-2">
+            <div className="rounded-xl border p-5">
+              <p className="font-semibold">
+                ⏱️ 60 Minute Mock Test
+              </p>
+              <p className="mt-1 text-sm text-gray-600">
+                Practice with a timed mock-test experience.
+              </p>
+            </div>
+
+            <div className="rounded-xl border p-5">
+              <p className="font-semibold">
+                📝 45–52 Questions
+              </p>
+              <p className="mt-1 text-sm text-gray-600">
+                Questions are selected from the practice question bank.
+              </p>
+            </div>
+
+            <div className="rounded-xl border p-5">
+              <p className="font-semibold">
+                📊 Result History
+              </p>
+              <p className="mt-1 text-sm text-gray-600">
+                Check previous mock-test results from your dashboard.
+              </p>
+            </div>
+
+            <div className="rounded-xl border p-5">
+              <p className="font-semibold">
+                📱 Mobile + Computer
+              </p>
+              <p className="mt-1 text-sm text-gray-600">
+                Responsive interface for phones, tablets and computers.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="border-t bg-gray-50">
+        <div className="mx-auto max-w-6xl px-5 py-6 text-center">
+          <p className="font-semibold text-gray-700">
+            Made by Anish Bhattarai
+          </p>
+
+          <p className="mt-1 text-sm text-gray-500">
+            JFT Mock Test Practice Platform
+          </p>
+
+          <a
+            href="/admin/login"
+            className="mt-4 inline-block text-xs text-gray-400 hover:text-gray-600"
+          >
+            Admin Login
+          </a>
+        </div>
+      </footer>
+    </main>
+  );
+}
